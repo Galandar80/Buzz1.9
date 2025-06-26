@@ -145,7 +145,7 @@ export interface ScoreHistory {
   responseTime?: number;
 }
 
-export function RoomProvider({ children }: { children: ReactNode }) {
+function RoomProvider({ children }: { children: ReactNode }) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState<string | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
@@ -908,6 +908,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   return <RoomContext.Provider value={value}>{children}</RoomContext.Provider>;
 }
 
+export { RoomProvider };
+
+// Hook per utilizzare il context
 export const useRoom = (): RoomContextType => {
   const context = useContext(RoomContext);
   if (context === undefined) {
