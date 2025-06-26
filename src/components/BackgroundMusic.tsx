@@ -123,21 +123,109 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     }, 50);
   }, [isPlaying, isPaused, currentTrackIndex, backgroundTracks, backgroundVolume, savedCurrentTime]);
 
+  // Versioni stabili delle funzioni per gli event listener
+  const stableFadeOut = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || audio.paused) {
+      console.log('🎵 stableFadeOut: audio non disponibile o già in pausa');
+      return;
+    }
+    
+    console.log('🎵 stableFadeOut: Iniziando fade out...');
+    
+    const currentTime = audio.currentTime;
+    setSavedCurrentTime(currentTime);
+    console.log('🎵 Posizione salvata:', currentTime, 'secondi');
+    
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+    }
+    
+    const originalVolume = audio.volume;
+    
+    fadeIntervalRef.current = setInterval(() => {
+      if (audio && audio.volume > 0.05) {
+        const newVolume = Math.max(0, audio.volume - 0.1);
+        audio.volume = newVolume;
+        console.log('🎵 Fade out progress:', newVolume);
+      } else {
+        console.log('🎵 Fade out completed, pausing music');
+        if (audio) {
+          audio.pause();
+          audio.volume = originalVolume;
+        }
+        setIsPaused(true);
+        setIsPlaying(false);
+        if (fadeIntervalRef.current) {
+          clearInterval(fadeIntervalRef.current);
+          fadeIntervalRef.current = null;
+        }
+      }
+    }, 50);
+  }, []);
+
+  const stableFadeIn = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      console.log('🎵 stableFadeIn: audio non disponibile');
+      return;
+    }
+    
+    console.log('🎵 stableFadeIn: Iniziando fade in...');
+    
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+    }
+
+    // Riprendi la musica
+    if (audio.paused) {
+      audio.volume = 0;
+      audio.play().then(() => {
+        setIsPaused(false);
+        setIsPlaying(true);
+      }).catch(console.error);
+    }
+
+    // Fade in del volume
+    let currentVolume = 0;
+    audio.volume = 0;
+    
+    fadeIntervalRef.current = setInterval(() => {
+      if (!audio) {
+        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+        return;
+      }
+
+      currentVolume += 0.05;
+      if (currentVolume >= backgroundVolume) {
+        currentVolume = backgroundVolume;
+        if (fadeIntervalRef.current) {
+          clearInterval(fadeIntervalRef.current);
+          fadeIntervalRef.current = null;
+        }
+        console.log('🎵 Fade in completato - volume finale:', currentVolume);
+      }
+      audio.volume = currentVolume;
+    }, 50);
+  }, [backgroundVolume]);
+
   // Monitora i cambiamenti del player principale e del controllo da Firebase
   useEffect(() => {
+    console.log('🎵 BackgroundMusic: Inizializzando event listeners...');
+    
     // Ascolta eventi globali dal player principale
     const handleMainPlayerPlay = () => {
       console.log('🎵 BackgroundMusic: ricevuto evento mainPlayerPlay');
-      fadeOutBackground();
+      console.log('🎵 Stato corrente prima del fade out - audioRef:', !!audioRef.current, 'paused:', audioRef.current?.paused);
+      stableFadeOut();
     };
     
     const handleMainPlayerPause = () => {
       console.log('🎵 BackgroundMusic: ricevuto evento mainPlayerPause');
-      console.log('🎵 Stato attuale - isPlaying:', isPlaying, 'isPaused:', isPaused, 'tracks:', backgroundTracks.length);
-      // Delay più lungo per assicurarsi che l'audio principale si sia fermato
+      // Delay per assicurarsi che l'audio principale si sia fermato
       setTimeout(() => {
         console.log('🎵 Eseguendo fade in dopo pausa del player principale');
-        fadeInBackground();
+        stableFadeIn();
       }, 1000);
     };
     
@@ -145,47 +233,62 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       console.log('🎵 BackgroundMusic: ricevuto evento mainPlayerStop');
       setTimeout(() => {
         console.log('🎵 Eseguendo fade in dopo stop del player principale');
-        fadeInBackground();
+        stableFadeIn();
       }, 1000);
     };
 
+    // Aggiungi un listener di test per verificare che gli eventi arrivino
+    const handleTestEvent = () => {
+      console.log('🎵 BackgroundMusic: Test event ricevuto!');
+    };
+
+    console.log('🎵 BackgroundMusic: Aggiungendo event listeners...');
     window.addEventListener('mainPlayerPlay', handleMainPlayerPlay);
     window.addEventListener('mainPlayerPause', handleMainPlayerPause);
     window.addEventListener('mainPlayerStop', handleMainPlayerStop);
+    window.addEventListener('testBackgroundMusic', handleTestEvent);
+
+    // Test immediato per verificare che l'event listener funzioni
+    setTimeout(() => {
+      console.log('🎵 BackgroundMusic: Inviando evento di test...');
+      window.dispatchEvent(new CustomEvent('testBackgroundMusic'));
+    }, 100);
 
     // Ascolta anche i controlli da Firebase per sincronizzazione tra dispositivi
+    let unsubscribeControl = null;
     if (roomCode) {
       const backgroundMusicControlRef = ref(database, `rooms/${roomCode}/backgroundMusicControl`);
-      const unsubscribeControl = onValue(backgroundMusicControlRef, (snapshot) => {
+      unsubscribeControl = onValue(backgroundMusicControlRef, (snapshot) => {
         const controlData = snapshot.val();
         if (controlData && controlData.action === 'resume') {
           console.log('🎵 BackgroundMusic: ricevuto comando resume da Firebase');
           setTimeout(() => {
-            fadeInBackground();
+            stableFadeIn();
           }, 1000);
         }
       });
-
-      return () => {
-        window.removeEventListener('mainPlayerPlay', handleMainPlayerPlay);
-        window.removeEventListener('mainPlayerPause', handleMainPlayerPause);
-        window.removeEventListener('mainPlayerStop', handleMainPlayerStop);
-        unsubscribeControl();
-        if (fadeIntervalRef.current) {
-          clearInterval(fadeIntervalRef.current);
-        }
-      };
     }
 
     return () => {
+      console.log('🎵 BackgroundMusic: Rimuovendo event listeners...');
       window.removeEventListener('mainPlayerPlay', handleMainPlayerPlay);
       window.removeEventListener('mainPlayerPause', handleMainPlayerPause);
       window.removeEventListener('mainPlayerStop', handleMainPlayerStop);
+      window.removeEventListener('testBackgroundMusic', handleTestEvent);
+      if (unsubscribeControl) {
+        unsubscribeControl();
+      }
       if (fadeIntervalRef.current) {
         clearInterval(fadeIntervalRef.current);
       }
     };
-  }, [fadeOutBackground, fadeInBackground, roomCode]);
+  }, [stableFadeOut, stableFadeIn, roomCode]); // Aggiungo le funzioni stabili come dipendenze
+
+  // Effetto separato per aggiornare le funzioni quando cambiano le dipendenze
+  useEffect(() => {
+    // Aggiorna le funzioni quando cambiano gli stati
+    console.log('🎵 BackgroundMusic: Stati aggiornati - isPlaying:', isPlaying, 'isPaused:', isPaused);
+  }, [isPlaying, isPaused, backgroundTracks.length, roomCode]);
 
   // Inizializza l'audio quando ci sono tracce disponibili
   useEffect(() => {
