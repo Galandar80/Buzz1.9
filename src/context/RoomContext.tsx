@@ -387,6 +387,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     
     try {
       await registerBuzz(roomCode, playerId, playerName);
+      
+      // FAR RIPRENDERE IMMEDIATAMENTE LA MUSICA DI BACKGROUND
+      // Non appena il giocatore fa buzz, la musica riprende
+      window.dispatchEvent(new CustomEvent('mainPlayerPause'));
+      
     } catch (err) {
       console.error('Errore nel registrare il buzz:', err);
       toast.error('Errore nel registrare il buzz');
@@ -437,9 +442,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       // Disabilita il buzz dopo aver dato la risposta
       await disableBuzz();
       
-      // Notifica alla musica di background che può riprendere
-      window.dispatchEvent(new CustomEvent('mainPlayerPause'));
-      
       toast.success(`${currentPlayer.name}: +${basePoints} punti! (Risposta corretta)`);
       
     } catch (err) {
@@ -475,9 +477,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       
       // Disabilita il buzz dopo aver dato la risposta
       await disableBuzz();
-      
-      // Notifica alla musica di background che può riprendere
-      window.dispatchEvent(new CustomEvent('mainPlayerPause'));
       
       toast.success(`${currentPlayer.name}: -${penaltyPoints} punti (Risposta sbagliata)`);
       
@@ -516,9 +515,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       
       // Disabilita il buzz dopo aver dato la risposta
       await disableBuzz();
-      
-      // Notifica alla musica di background che può riprendere
-      window.dispatchEvent(new CustomEvent('mainPlayerPause'));
       
       toast.success(`${currentPlayer.name}: +${superPoints} punti! (Risposta SUPER!)`);
       
@@ -584,9 +580,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       
       // Disabilita il buzz dopo aver rifiutato la risposta
       await disableBuzz();
-      
-      // Notifica alla musica di background che può riprendere
-      window.dispatchEvent(new CustomEvent('mainPlayerPause'));
       
     } catch (err) {
       console.error('Errore nel rifiutare la risposta:', err);
