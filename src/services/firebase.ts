@@ -208,65 +208,6 @@ export const deleteRoom = async (roomCode: string): Promise<void> => {
   await set(roomRef, null);
 };
 
-// 🔥 NUOVA FUNZIONE: Elimina tutte le stanze attive
-export const deleteAllRooms = async (): Promise<void> => {
-  console.log('🗑️ Eliminazione di tutte le stanze attive...');
-  
-  try {
-    // Ottieni tutte le stanze
-    const roomsRef = ref(database, 'rooms');
-    const snapshot = await get(roomsRef);
-    
-    if (snapshot.exists()) {
-      const rooms = snapshot.val();
-      const roomCodes = Object.keys(rooms);
-      
-      console.log(`📋 Trovate ${roomCodes.length} stanze attive:`, roomCodes);
-      
-      // Elimina tutte le stanze
-      await set(roomsRef, null);
-      
-      console.log(`✅ Eliminate con successo ${roomCodes.length} stanze`);
-      return;
-    } else {
-      console.log('📭 Nessuna stanza trovata nel database');
-      return;
-    }
-  } catch (error) {
-    console.error('❌ Errore durante l\'eliminazione delle stanze:', error);
-    throw error;
-  }
-};
-
-// 🔍 NUOVA FUNZIONE: Lista tutte le stanze attive
-export const listAllRooms = async (): Promise<{roomCode: string, hostName: string, playerCount: number, createdAt: number}[]> => {
-  console.log('📋 Recupero lista di tutte le stanze attive...');
-  
-  try {
-    const roomsRef = ref(database, 'rooms');
-    const snapshot = await get(roomsRef);
-    
-    if (snapshot.exists()) {
-      const rooms = snapshot.val();
-      const roomList = Object.entries(rooms).map(([roomCode, roomData]: [string, any]) => ({
-        roomCode,
-        hostName: roomData.hostName || 'Host sconosciuto',
-        playerCount: roomData.players ? Object.keys(roomData.players).length : 0,
-        createdAt: roomData.createdAt || 0
-      }));
-      
-      console.log(`📋 Trovate ${roomList.length} stanze attive`);
-      return roomList;
-    } else {
-      console.log('📭 Nessuna stanza trovata nel database');
-      return [];
-    }
-  } catch (error) {
-    console.error('❌ Errore durante il recupero delle stanze:', error);
-    throw error;
-  }
-};
-
 export const listenToRoom = (
   roomCode: string, 
   callback: (data: RoomData | null) => void
@@ -415,7 +356,6 @@ export default {
   subtractPoints,
   rejectPlayerAnswer,
   addPlayedSong,
-  deleteAllRooms,
-  listAllRooms,
+  deleteRoom,
   auth
 };
