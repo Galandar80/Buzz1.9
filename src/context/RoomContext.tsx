@@ -76,12 +76,12 @@ interface RoomData {
 }
 
 interface RoomContextType {
-  roomCode: string | null;
-  setRoomCode: (code: string | null) => void;
+  roomCode: string;
+  setRoomCode: React.Dispatch<React.SetStateAction<string>>;
   playerName: string;
-  setPlayerName: (name: string) => void;
-  playerId: string | null;
-  setPlayerId: (id: string | null) => void;
+  setPlayerName: React.Dispatch<React.SetStateAction<string>>;
+  playerId: string;
+  setPlayerId: React.Dispatch<React.SetStateAction<string>>;
   roomData: RoomData | null;
   isHost: boolean;
   isLoading: boolean;
@@ -90,7 +90,7 @@ interface RoomContextType {
   winnerName: string | null;
   handleCreateRoom: (name: string) => Promise<void>;
   handleJoinRoom: (roomCode: string, name: string) => Promise<void>;
-  handleBuzz: () => Promise<void>;
+  handleBuzz: (playerId?: string, playerName?: string) => Promise<void>;
   handleResetBuzz: () => Promise<void>;
   handleLeaveRoom: () => Promise<void>;
   awardPoints: (amount?: number) => Promise<void>;
@@ -375,30 +375,50 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleBuzz = async () => {
-    if (!roomCode || !playerId || !playerName) return;
+  const handleBuzz = useCallback(async (inputPlayerId?: string, inputPlayerName?: string) => {
+    const buzzPlayerId = inputPlayerId || playerId;
+    const buzzPlayerName = inputPlayerName || playerName;
     
-    // Controllo se il buzz è abilitato (default true per compatibilità)
-    const buzzEnabled = roomData?.buzzEnabled !== false;
-    if (!buzzEnabled) {
-      toast.warning('Il buzz è attualmente disabilitato dall\'host');
+    if (!roomCode || !roomData || !buzzPlayerId || !buzzPlayerName) return;
+
+    // Verifica se il buzz è abilitato
+    if (!roomData.buzzEnabled) {
+      console.log('⚠️ Buzz disabilitato per questa stanza');
       return;
     }
-    
-    try {
-      await registerBuzz(roomCode, playerId, playerName);
-      
-      // FAR RIPRENDERE IMMEDIATAMENTE LA MUSICA DI BACKGROUND
-      // Non appena il giocatore fa buzz, la musica riprende
-      console.log('🎵 BUZZ FATTO! Invio evento mainPlayerPause per riprendere musica background');
-      window.dispatchEvent(new CustomEvent('mainPlayerPause'));
-      console.log('🎵 Evento mainPlayerPause inviato con successo');
-      
-    } catch (err) {
-      console.error('Errore nel registrare il buzz:', err);
-      toast.error('Errore nel registrare il buzz');
+
+    // Verifica se c'è già un vincitore
+    if (roomData.winnerInfo) {
+      console.log('⚠️ C\'è già un vincitore per questa domanda');
+      return;
     }
-  };
+
+    console.log('🚀 BUZZ fatto da:', buzzPlayerName);
+
+    try {
+      // Aggiorna lo stato della stanza con il vincitore
+      await update(ref(database, `rooms/${roomCode}`), {
+        winnerInfo: {
+          playerId: buzzPlayerId,
+          playerName: buzzPlayerName,
+          timestamp: Date.now()
+        },
+        buzzEnabled: false // Disabilita ulteriori buzz
+      });
+
+      // Aggiungi evento per far riprendere la musica di background su tutti i dispositivi
+      await update(ref(database, `rooms/${roomCode}/backgroundMusicControl`), {
+        action: 'resume',
+        timestamp: Date.now()
+      });
+
+      console.log('🚀 BUZZ: Evento mainPlayerPause inviato');
+      window.dispatchEvent(new CustomEvent('mainPlayerPause'));
+
+    } catch (error) {
+      console.error('Errore durante l\'aggiornamento del buzz:', error);
+    }
+  }, [roomCode, roomData, playerId, playerName]);
 
   const handleResetBuzz = async () => {
     if (!roomCode || !isHost) return;

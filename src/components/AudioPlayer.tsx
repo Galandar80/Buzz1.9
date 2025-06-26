@@ -96,20 +96,24 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
   useEffect(() => {
     if (!roomCode) return;
 
-    // Ascolta i cambiamenti del countdown da Firebase
+    // TUTTI i dispositivi ascoltano i cambiamenti del countdown da Firebase
     const countdownRef = ref(database, `rooms/${roomCode}/countdown`);
     const unsubscribeCountdown = onValue(countdownRef, (snapshot) => {
       const countdownData = snapshot.val();
       if (countdownData) {
+        console.log('🎵 Countdown ricevuto da Firebase:', countdownData);
         setIsCountdownActive(countdownData.isActive || false);
         setCountdownValue(countdownData.value || 0);
         setCountdownSongName(countdownData.songName || '');
         
-        console.log('🎵 Countdown aggiornato:', {
-          isActive: countdownData.isActive,
-          value: countdownData.value,
-          songName: countdownData.songName
-        });
+        // Se il countdown è attivo, mostralo a tutti
+        if (countdownData.isActive) {
+          console.log('🎵 Countdown attivo per tutti i dispositivi:', {
+            isActive: countdownData.isActive,
+            value: countdownData.value,
+            songName: countdownData.songName
+          });
+        }
       } else {
         setIsCountdownActive(false);
         setCountdownValue(0);
@@ -117,8 +121,28 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       }
     });
 
+    // Solo l'host ascolta anche gli eventi per abilitare/disabilitare il buzz
+    let unsubscribeBuzzControl = null;
+    if (isHost) {
+      unsubscribeBuzzControl = onValue(countdownRef, (snapshot) => {
+        const countdownData = snapshot.val();
+        if (countdownData) {
+          if (countdownData.isActive && countdownData.value === 3) {
+            // Inizio countdown - disabilita buzz
+            window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
+          } else if (!countdownData.isActive && countdownData.value === 0) {
+            // Fine countdown - abilita buzz quando inizia l'audio
+            window.dispatchEvent(new CustomEvent('enableBuzzForSong'));
+          }
+        }
+      });
+    }
+
     return () => {
       unsubscribeCountdown();
+      if (unsubscribeBuzzControl) {
+        unsubscribeBuzzControl();
+      }
     };
   }, [roomCode, isHost]);
 
@@ -352,6 +376,36 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       }
     };
   }, []);
+
+  // 🔥 LISTENER FIREBASE PER COUNTDOWN - Sincronizza su tutti i dispositivi
+  useEffect(() => {
+    if (!roomCode) return;
+
+    const countdownRef = ref(database, `rooms/${roomCode}/countdown`);
+    
+    const unsubscribe = onValue(countdownRef, (snapshot) => {
+      const countdownData = snapshot.val();
+      
+      if (countdownData) {
+        console.log('📱 Countdown ricevuto da Firebase:', countdownData);
+        
+        // Aggiorna lo stato del countdown per tutti i dispositivi
+        setIsCountdownActive(countdownData.isActive || false);
+        setCountdownValue(countdownData.value || 0);
+        setCountdownSongName(countdownData.songName || '');
+        
+        // Se il countdown è attivo e non siamo l'host, gestiamo gli eventi buzz
+        if (countdownData.isActive) {
+          window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
+        } else if (countdownData.value === 0 && !countdownData.isActive) {
+          // Il countdown è finito, abilita il buzz
+          window.dispatchEvent(new CustomEvent('enableBuzzForSong'));
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [roomCode]);
 
   const handleFileSelect = (column: 'left' | 'right') => {
     const input = document.createElement('input');

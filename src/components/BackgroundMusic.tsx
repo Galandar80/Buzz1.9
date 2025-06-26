@@ -4,6 +4,8 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Volume2, VolumeX, Music, Upload, Play, Pause, SkipForward } from 'lucide-react';
 import { toast } from 'sonner';
+import { ref, onValue } from 'firebase/database';
+import { database } from '../services/firebase';
 
 interface BackgroundMusicProps {
   volume?: number;
@@ -14,7 +16,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
   volume = 0.3, 
   autoPlay = true 
 }) => {
-  const { isHost } = useRoom();
+  const { isHost, roomCode } = useRoom();
   const [backgroundTracks, setBackgroundTracks] = useState<File[]>([]);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -105,7 +107,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     }, 50);
   }, [isPlaying, isPaused, currentTrackIndex, backgroundTracks, backgroundVolume]);
 
-  // Monitora i cambiamenti del player principale
+  // Monitora i cambiamenti del player principale e del controllo da Firebase
   useEffect(() => {
     // Ascolta eventi globali dal player principale
     const handleMainPlayerPlay = () => fadeOutBackground();
@@ -120,6 +122,29 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     window.addEventListener('mainPlayerPause', handleMainPlayerPause);
     window.addEventListener('mainPlayerStop', handleMainPlayerStop);
 
+    // Ascolta anche i controlli da Firebase per sincronizzazione tra dispositivi
+    if (roomCode) {
+      const backgroundMusicControlRef = ref(database, `rooms/${roomCode}/backgroundMusicControl`);
+      const unsubscribeControl = onValue(backgroundMusicControlRef, (snapshot) => {
+        const controlData = snapshot.val();
+        if (controlData && controlData.action === 'resume') {
+          console.log('🎵 BackgroundMusic: ricevuto comando resume da Firebase');
+          console.log('🎵 Stato attuale - isPlaying:', isPlaying, 'isPaused:', isPaused, 'tracks:', backgroundTracks.length);
+          setTimeout(fadeInBackground, 500);
+        }
+      });
+
+      return () => {
+        window.removeEventListener('mainPlayerPlay', handleMainPlayerPlay);
+        window.removeEventListener('mainPlayerPause', handleMainPlayerPause);
+        window.removeEventListener('mainPlayerStop', handleMainPlayerStop);
+        unsubscribeControl();
+        if (fadeIntervalRef.current) {
+          clearInterval(fadeIntervalRef.current);
+        }
+      };
+    }
+
     return () => {
       window.removeEventListener('mainPlayerPlay', handleMainPlayerPlay);
       window.removeEventListener('mainPlayerPause', handleMainPlayerPause);
@@ -128,7 +153,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
         clearInterval(fadeIntervalRef.current);
       }
     };
-  }, [fadeOutBackground, fadeInBackground]);
+  }, [fadeOutBackground, fadeInBackground, roomCode, isPlaying, isPaused, backgroundTracks.length]);
 
   // Inizializza l'audio quando ci sono tracce disponibili
   useEffect(() => {
