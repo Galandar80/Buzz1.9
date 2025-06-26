@@ -158,61 +158,6 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     }
   }, [roomCode, isHost]);
 
-  // Funzione per avviare il countdown (solo per l'host)
-  const startCountdown = useCallback(async (audioData: { file: File; column: 'left' | 'right' }) => {
-    if (!isHost || !roomCode) return;
-
-    console.log('🎵 Avvio countdown sincronizzato per:', audioData.file.name);
-    
-    try {
-      // Disabilita il buzz durante il countdown
-      window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
-      
-      // Salva lo stato iniziale del countdown in Firebase
-      await update(ref(database, `rooms/${roomCode}/countdown`), {
-        isActive: true,
-        value: 3,
-        songName: audioData.file.name,
-        startTime: Date.now()
-      });
-
-      setPendingAudioData(audioData);
-
-      // Countdown da 3 a 0
-      for (let i = 3; i > 0; i--) {
-        await update(ref(database, `rooms/${roomCode}/countdown`), {
-          value: i,
-          isActive: true,
-          songName: audioData.file.name
-        });
-        
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      // Fine countdown
-      await update(ref(database, `rooms/${roomCode}/countdown`), {
-        isActive: false,
-        value: 0,
-        songName: ''
-      });
-
-      // Avvia l'audio dopo il countdown
-      if (pendingAudioData) {
-        executePlayAudio(pendingAudioData.file, pendingAudioData.column);
-        setPendingAudioData(null);
-      }
-
-    } catch (error) {
-      console.error('Errore durante il countdown:', error);
-      // In caso di errore, pulisci lo stato
-      await update(ref(database, `rooms/${roomCode}/countdown`), {
-        isActive: false,
-        value: 0,
-        songName: ''
-      });
-    }
-  }, [isHost, roomCode, pendingAudioData]);
-
   // Funzione separata per l'esecuzione dell'audio (senza countdown)
   const executePlayAudio = useCallback((file: File, column: 'left' | 'right') => {
     if (currentAudio) {
@@ -247,7 +192,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       }
       
       if ((column === 'left' && loopMode.left) || (column === 'right' && loopMode.right)) {
-        startCountdown({ file, column }); // Riavvia con countdown anche per il loop
+        // Per il loop, riavvia direttamente senza countdown per evitare dipendenze circolari
+        setTimeout(() => {
+          executePlayAudio(file, column);
+        }, 1000);
       } else {
         setCurrentAudio(null);
         setCurrentColumn(null);
@@ -281,7 +229,70 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     } else {
       setNowPlaying(prev => ({ ...prev, right: file.name }));
     }
-  }, [currentAudio, masterVolume, isMuted, roomCode, loopMode, startCountdown]);
+  }, [currentAudio, masterVolume, isMuted, roomCode, loopMode]);
+
+  // Funzione per avviare il countdown (solo per l'host)
+  const startCountdown = useCallback(async (audioData: { file: File; column: 'left' | 'right' }) => {
+    if (!isHost || !roomCode) return;
+
+    console.log('🎵 Avvio countdown sincronizzato per:', audioData.file.name);
+    
+    try {
+      // Disabilita il buzz durante il countdown
+      window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
+      
+      // Salva lo stato iniziale del countdown in Firebase
+      await update(ref(database, `rooms/${roomCode}/countdown`), {
+        isActive: true,
+        value: 3,
+        songName: audioData.file.name,
+        startTime: Date.now()
+      });
+
+      setPendingAudioData(audioData);
+
+      // Countdown da 3 a 0
+      for (let i = 3; i > 0; i--) {
+        console.log(`🎵 Countdown: ${i}`);
+        await update(ref(database, `rooms/${roomCode}/countdown`), {
+          value: i,
+          isActive: true,
+          songName: audioData.file.name
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Fine countdown
+      console.log('🎵 Countdown terminato - avvio musica');
+      await update(ref(database, `rooms/${roomCode}/countdown`), {
+        isActive: false,
+        value: 0,
+        songName: ''
+      });
+
+      // Pausa la musica di background PRIMA di avviare la musica principale
+      console.log('🎵 Invio evento per pausare musica di background');
+      window.dispatchEvent(new CustomEvent('mainPlayerPlay'));
+
+      // Avvia l'audio dopo il countdown con un piccolo delay per assicurarsi che l'evento sia processato
+      setTimeout(() => {
+        console.log('🎵 Esecuzione audio dopo countdown:', audioData.file.name);
+        executePlayAudio(audioData.file, audioData.column);
+        setPendingAudioData(null);
+      }, 200);
+
+    } catch (error) {
+      console.error('Errore durante il countdown:', error);
+      // In caso di errore, pulisci lo stato
+      await update(ref(database, `rooms/${roomCode}/countdown`), {
+        isActive: false,
+        value: 0,
+        songName: ''
+      });
+      setPendingAudioData(null);
+    }
+  }, [isHost, roomCode, executePlayAudio]);
 
   const stopAudioPlayback = useCallback(() => {
     if (currentAudio) {
