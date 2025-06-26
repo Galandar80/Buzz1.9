@@ -4,6 +4,8 @@ import { Pause, Play, Volume2, VolumeX, RotateCcw } from 'lucide-react';
 import { AudioStreamManager } from '../services/webrtc';
 import { addPlayedSong } from '../services/firebase';
 import { toast } from 'sonner';
+import { ref, onValue, update } from 'firebase/database';
+import { database } from '../services/firebase';
 
 interface AudioPlayerProps {
   onAudioPause?: () => void;
@@ -79,47 +81,46 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   
-  // Stati per il countdown
+  // Stati per il countdown sincronizzato
+  const [countdownValue, setCountdownValue] = useState(0);
   const [isCountdownActive, setIsCountdownActive] = useState(false);
-  const [countdownValue, setCountdownValue] = useState(3);
-  const [pendingAudioData, setPendingAudioData] = useState<{
-    file: File;
-    column: 'left' | 'right';
-  } | null>(null);
+  const [countdownSongName, setCountdownSongName] = useState('');
+  const [pendingAudioData, setPendingAudioData] = useState<{ file: File; column: 'left' | 'right' } | null>(null);
 
   const leftTbodyRef = useRef<HTMLTableSectionElement>(null);
   const rightTbodyRef = useRef<HTMLTableSectionElement>(null);
   const streamManagerRef = useRef<AudioStreamManager | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Gestione eventi globali del countdown per la sincronizzazione
+  // Gestione eventi countdown e sincronizzazione con Firebase
   useEffect(() => {
-    const handleCountdownStart = (e: CustomEvent) => {
-      setIsCountdownActive(true);
-      setCountdownValue(3);
-      setPendingAudioData(e.detail);
-    };
+    if (!roomCode) return;
 
-    const handleCountdownUpdate = (e: CustomEvent) => {
-      setCountdownValue(e.detail.count);
-    };
-
-    const handleCountdownEnd = () => {
-      setIsCountdownActive(false);
-      setCountdownValue(3);
-      setPendingAudioData(null);
-    };
-
-    window.addEventListener('countdownStart', handleCountdownStart as EventListener);
-    window.addEventListener('countdownUpdate', handleCountdownUpdate as EventListener);
-    window.addEventListener('countdownEnd', handleCountdownEnd);
+    // Ascolta i cambiamenti del countdown da Firebase
+    const countdownRef = ref(database, `rooms/${roomCode}/countdown`);
+    const unsubscribeCountdown = onValue(countdownRef, (snapshot) => {
+      const countdownData = snapshot.val();
+      if (countdownData) {
+        setIsCountdownActive(countdownData.isActive || false);
+        setCountdownValue(countdownData.value || 0);
+        setCountdownSongName(countdownData.songName || '');
+        
+        console.log('🎵 Countdown aggiornato:', {
+          isActive: countdownData.isActive,
+          value: countdownData.value,
+          songName: countdownData.songName
+        });
+      } else {
+        setIsCountdownActive(false);
+        setCountdownValue(0);
+        setCountdownSongName('');
+      }
+    });
 
     return () => {
-      window.removeEventListener('countdownStart', handleCountdownStart as EventListener);
-      window.removeEventListener('countdownUpdate', handleCountdownUpdate as EventListener);
-      window.removeEventListener('countdownEnd', handleCountdownEnd);
+      unsubscribeCountdown();
     };
-  }, []);
+  }, [roomCode, isHost]);
 
   // Inizializza WebRTC quando necessario
   useEffect(() => {
@@ -133,152 +134,160 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     }
   }, [roomCode, isHost]);
 
-  // Funzione per avviare il countdown
-  const startCountdown = useCallback((file: File, column: 'left' | 'right') => {
-    // Disabilita il buzz durante il countdown
-    window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
-    
-    // Invia evento globale per sincronizzare tutti i display
-    window.dispatchEvent(new CustomEvent('countdownStart', {
-      detail: { file, column, songName: file.name }
-    }));
+  // Funzione per avviare il countdown (solo per l'host)
+  const startCountdown = useCallback(async (audioData: { file: File; column: 'left' | 'right' }) => {
+    if (!isHost || !roomCode) return;
 
-    setIsCountdownActive(true);
-    setCountdownValue(3);
-    setPendingAudioData({ file, column });
-
-    let count = 3;
+    console.log('🎵 Avvio countdown sincronizzato per:', audioData.file.name);
     
-    countdownIntervalRef.current = setInterval(() => {
-      count--;
-      setCountdownValue(count);
+    try {
+      // Disabilita il buzz durante il countdown
+      window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
       
-      // Invia evento di aggiornamento per tutti i display
-      window.dispatchEvent(new CustomEvent('countdownUpdate', {
-        detail: { count, songName: file.name }
-      }));
+      // Salva lo stato iniziale del countdown in Firebase
+      await update(ref(database, `rooms/${roomCode}/countdown`), {
+        isActive: true,
+        value: 3,
+        songName: audioData.file.name,
+        startTime: Date.now()
+      });
 
-      if (count <= 0) {
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
+      setPendingAudioData(audioData);
+
+      // Countdown da 3 a 0
+      for (let i = 3; i > 0; i--) {
+        await update(ref(database, `rooms/${roomCode}/countdown`), {
+          value: i,
+          isActive: true,
+          songName: audioData.file.name
+        });
         
-        // Countdown terminato, avvia l'audio
-        setIsCountdownActive(false);
-        setPendingAudioData(null);
-        
-        // Invia evento di fine countdown
-        window.dispatchEvent(new CustomEvent('countdownEnd'));
-        
-        // Esegui l'audio effettivo
-        executePlayAudio(file, column);
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    }, 1000);
-  }, []);
 
-  // Funzione separata per l'esecuzione effettiva dell'audio
+      // Fine countdown
+      await update(ref(database, `rooms/${roomCode}/countdown`), {
+        isActive: false,
+        value: 0,
+        songName: ''
+      });
+
+      // Avvia l'audio dopo il countdown
+      if (pendingAudioData) {
+        executePlayAudio(pendingAudioData.file, pendingAudioData.column);
+        setPendingAudioData(null);
+      }
+
+    } catch (error) {
+      console.error('Errore durante il countdown:', error);
+      // In caso di errore, pulisci lo stato
+      await update(ref(database, `rooms/${roomCode}/countdown`), {
+        isActive: false,
+        value: 0,
+        songName: ''
+      });
+    }
+  }, [isHost, roomCode, pendingAudioData]);
+
+  // Funzione separata per l'esecuzione dell'audio (senza countdown)
   const executePlayAudio = useCallback((file: File, column: 'left' | 'right') => {
     if (currentAudio) {
       currentAudio.pause();
+      setCurrentAudio(null);
     }
 
-    // Invia evento per far pausare la musica di background
-    window.dispatchEvent(new CustomEvent('mainPlayerPlay'));
+    const newAudio = new Audio(URL.createObjectURL(file));
+    newAudio.volume = masterVolume;
+    newAudio.muted = isMuted;
 
-    const audio = new Audio(URL.createObjectURL(file));
-    audio.volume = 0; // Inizia con volume 0 per il fade in
+    // Event listeners per sincronizzazione
+    newAudio.addEventListener('play', () => {
+      window.dispatchEvent(new CustomEvent('mainPlayerPlay'));
+      window.dispatchEvent(new CustomEvent('enableBuzzForSong'));
+      setIsRemotePlaying(true);
+    });
     
-    // Cattura l'audio del sistema quando viene riprodotto
-    if (isHost && streamManagerRef.current) {
-      const audioContext = new AudioContext();
-      const source = audioContext.createMediaElementSource(audio);
-      const destination = audioContext.createMediaStreamDestination();
-      source.connect(destination);
-      source.connect(audioContext.destination);
-
-      // Invia lo stream audio attraverso WebRTC
-      const stream = destination.stream;
-      streamManagerRef.current.setAudioStream(stream);
-    }
-    
-    audio.onended = () => {
-      // Disabilita il buzz quando la canzone finisce
-      window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
-      
-      // Invia evento per far riprendere la musica di background
+    newAudio.addEventListener('pause', () => {
       window.dispatchEvent(new CustomEvent('mainPlayerPause'));
+      setIsRemotePlaying(false);
+    });
+
+    newAudio.addEventListener('ended', () => {
+      window.dispatchEvent(new CustomEvent('mainPlayerStop'));
+      window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
+      setIsRemotePlaying(false);
+      
+      // Aggiungi la canzone ai brani riprodotti
+      if (roomCode) {
+        addPlayedSong(roomCode, file.name).catch(console.error);
+      }
       
       if ((column === 'left' && loopMode.left) || (column === 'right' && loopMode.right)) {
-        startCountdown(file, column); // Riavvia con countdown anche per il loop
+        startCountdown({ file, column }); // Riavvia con countdown anche per il loop
       } else {
         setCurrentAudio(null);
-        setNowPlaying(prev => ({ ...prev, [column]: '' }));
-      }
-    };
-
-    // Fade in effect con callback per abilitare il buzz
-    audio.play().then(() => {
-      const fadeIn = setInterval(() => {
-        if (audio && audio.volume < masterVolume) {
-          audio.volume = Math.min(masterVolume, audio.volume + 0.1);
+        setCurrentColumn(null);
+        if (column === 'left') {
+          setNowPlaying(prev => ({ ...prev, left: '' }));
         } else {
-          clearInterval(fadeIn);
-          // Quando il fade in è completato, abilita il buzz
-          window.dispatchEvent(new CustomEvent('enableBuzzForSong'));
+          setNowPlaying(prev => ({ ...prev, right: '' }));
+        }
+      }
+    });
+
+    // Inizia il fade in del volume
+    newAudio.volume = 0;
+    newAudio.play().then(() => {
+      let currentVolume = 0;
+      const fadeInterval = setInterval(() => {
+        currentVolume += 0.05;
+        if (currentVolume >= masterVolume) {
+          currentVolume = masterVolume;
+          clearInterval(fadeInterval);
+        }
+        newAudio.volume = currentVolume;
+      }, 50);
+    }).catch(console.error);
+
+    setCurrentAudio(newAudio);
+    setCurrentColumn(column);
+    
+    if (column === 'left') {
+      setNowPlaying(prev => ({ ...prev, left: file.name }));
+    } else {
+      setNowPlaying(prev => ({ ...prev, right: file.name }));
+    }
+  }, [currentAudio, masterVolume, isMuted, roomCode, loopMode, startCountdown]);
+
+  const stopAudioPlayback = useCallback(() => {
+    if (currentAudio) {
+      // Fade out prima di fermare
+      let currentVolume = currentAudio.volume;
+      const fadeInterval = setInterval(() => {
+        currentVolume -= 0.1;
+        if (currentVolume <= 0) {
+          currentVolume = 0;
+          currentAudio.volume = 0;
+          currentAudio.pause();
+          clearInterval(fadeInterval);
+        } else {
+          currentAudio.volume = currentVolume;
         }
       }, 50);
-    });
-
-    setCurrentAudio(audio);
-    setCurrentColumn(column);
-    setNowPlaying(prev => ({ ...prev, [column]: file.name }));
-
-    // Aggiungi il brano all'elenco dei brani già riprodotti in Firebase
-    if (roomCode && isHost) {
-      addPlayedSong(roomCode, file.name).catch(console.error);
     }
 
-    // Mostra notifica di avvio
-    toast.success(`🎵 Riproduzione iniziata: ${file.name}`, {
-      duration: 3000,
-    });
-  }, [currentAudio, isHost, streamManagerRef, masterVolume, loopMode, roomCode, startCountdown]);
-
-  // Funzione per fermare la riproduzione audio
-  const stopAudioPlayback = useCallback(() => {
-    // Ferma anche il countdown se attivo
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
+    // Reset degli stati
+    setCurrentAudio(null);
+    setCurrentColumn(null);
+    setNowPlaying({ left: '', right: '' });
     setIsCountdownActive(false);
     setPendingAudioData(null);
-    window.dispatchEvent(new CustomEvent('countdownEnd'));
 
     // Disabilita il buzz quando si ferma manualmente l'audio
     window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
-
-    if (currentAudio) {
-      // Fade out effect
-      const fadeOut = setInterval(() => {
-        if (currentAudio && currentAudio.volume > 0.1) {
-          currentAudio.volume = Math.max(0, currentAudio.volume - 0.1);
-        } else {
-          if (currentAudio) {
-            currentAudio.pause();
-            currentAudio.volume = masterVolume;
-            // Invia evento per far riprendere la musica di background
-            window.dispatchEvent(new CustomEvent('mainPlayerPause'));
-          }
-          clearInterval(fadeOut);
-        }
-      }, 50);
-    }
-    setCurrentAudio(null);
-    setNowPlaying({ left: '', right: '' });
-    if (onAudioPause) onAudioPause();
-  }, [currentAudio, masterVolume, onAudioPause]);
+    window.dispatchEvent(new CustomEvent('mainPlayerStop'));
+    setIsRemotePlaying(false);
+  }, [currentAudio]);
 
   // Esponi la funzione di pausa globalmente
   useEffect(() => {
@@ -381,7 +390,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     }
 
     // Avvia il countdown di 3 secondi
-    startCountdown(file, column);
+    startCountdown({ file, column });
   }, [isHost, isCountdownActive, startCountdown]);
 
   const toggleLoop = (column: 'left' | 'right') => {
@@ -463,7 +472,6 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       }
       setIsCountdownActive(false);
       setPendingAudioData(null);
-      window.dispatchEvent(new CustomEvent('countdownEnd'));
 
       // Ferma l'audio corrente
       if (currentAudio) {
@@ -511,7 +519,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       {/* Countdown Overlay - Visibile su tutti i display */}
       <CountdownOverlay 
         count={countdownValue}
-        songName={pendingAudioData?.file?.name || ''}
+        songName={countdownSongName}
         isVisible={isCountdownActive}
       />
 

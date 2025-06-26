@@ -59,104 +59,61 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     }, 100);
   }, [isPlaying]);
 
-  // Funzione per gestire il fade in quando il player principale si ferma
+  // Funzione per fade in graduale della musica di background
   const fadeInBackground = useCallback(() => {
-    if (!audioRef.current || !isPaused || backgroundTracks.length === 0) return;
+    console.log('🎵 fadeInBackground chiamata - isPlaying:', isPlaying, 'isPaused:', isPaused, 'currentIndex:', currentTrackIndex);
     
-    console.log('Fade in background music - isPaused:', isPaused, 'tracks:', backgroundTracks.length, 'target volume:', backgroundVolume);
-    
+    if (!audioRef.current || isPlaying) {
+      console.log('🎵 fadeInBackground: condizioni non soddisfatte - audioRef:', !!audioRef.current, 'isPlaying:', isPlaying);
+      return;
+    }
+
     if (fadeIntervalRef.current) {
       clearInterval(fadeIntervalRef.current);
     }
-    
-    // Ripristina immediatamente il volume target se è mutato
-    if (isMuted) {
-      console.log('Music is muted, skipping fade in');
-      return;
-    }
-    
-    // Assicurati che l'audio sia pronto e riproducibile
-    if (audioRef.current.paused) {
-      // Imposta volume a 0 per iniziare il fade in
-      audioRef.current.volume = 0;
-      
-      audioRef.current.play().then(() => {
-        console.log('Audio play successful, starting fade in');
-        setIsPaused(false);
-        setIsPlaying(true);
-        
-        // Se il volume target è molto basso, impostalo direttamente
-        if (backgroundVolume <= 0.1) {
-          audioRef.current!.volume = backgroundVolume;
-          console.log('Low volume detected, set directly to:', backgroundVolume);
-          return;
-        }
-        
-        // Fade in graduale per volumi normali
-        fadeIntervalRef.current = setInterval(() => {
-          if (audioRef.current && audioRef.current.volume < backgroundVolume - 0.01) {
-            const newVolume = Math.min(backgroundVolume, audioRef.current.volume + 0.08);
-            audioRef.current.volume = newVolume;
-            console.log('Fade in progress:', newVolume, '/ target:', backgroundVolume);
-          } else {
-            // Assicurati che raggiunga esattamente il volume target
-            if (audioRef.current) {
-              audioRef.current.volume = backgroundVolume;
-            }
-            console.log('Fade in completed at volume:', audioRef.current?.volume);
-            if (fadeIntervalRef.current) {
-              clearInterval(fadeIntervalRef.current);
-              fadeIntervalRef.current = null;
-            }
-          }
-        }, 80);
-      }).catch((error) => {
-        console.error('Error playing background music:', error);
-        // Fallback: prova a impostare direttamente il volume
-        if (audioRef.current) {
-          audioRef.current.volume = backgroundVolume;
-          setIsPaused(false);
-          setIsPlaying(true);
-          console.log('Fallback: volume set directly to:', backgroundVolume);
-        }
-      });
-    } else {
-      // Se già in riproduzione, assicurati che il volume sia corretto
-      console.log('Audio already playing, adjusting volume from', audioRef.current.volume, 'to', backgroundVolume);
+
+    if (isPaused) {
+      console.log('🎵 Riprendendo musica da pausa...');
+      audioRef.current.play().catch(console.error);
       setIsPaused(false);
+    } else if (backgroundTracks.length > 0 && currentTrackIndex < backgroundTracks.length) {
+      console.log('🎵 Avviando nuova traccia...');
+      audioRef.current.src = URL.createObjectURL(backgroundTracks[currentTrackIndex]);
+      audioRef.current.play().catch(console.error);
       setIsPlaying(true);
-      
-      // Se il volume è troppo basso, impostalo direttamente
-      if (audioRef.current.volume < 0.05) {
-        audioRef.current.volume = backgroundVolume;
-        console.log('Volume was too low, set directly to:', backgroundVolume);
-      } else {
-        // Fade in graduale
-        fadeIntervalRef.current = setInterval(() => {
-          if (audioRef.current && audioRef.current.volume < backgroundVolume - 0.01) {
-            const newVolume = Math.min(backgroundVolume, audioRef.current.volume + 0.08);
-            audioRef.current.volume = newVolume;
-            console.log('Fade in progress (already playing):', newVolume);
-          } else {
-            if (audioRef.current) {
-              audioRef.current.volume = backgroundVolume;
-            }
-            console.log('Fade in completed (already playing) at volume:', audioRef.current?.volume);
-            if (fadeIntervalRef.current) {
-              clearInterval(fadeIntervalRef.current);
-              fadeIntervalRef.current = null;
-            }
-          }
-        }, 80);
-      }
     }
-  }, [isPaused, backgroundTracks.length, backgroundVolume, isMuted]);
+
+    // Fade in del volume
+    console.log('🎵 Iniziando fade in del volume...');
+    let currentVolume = 0;
+    audioRef.current.volume = 0;
+    
+    fadeIntervalRef.current = setInterval(() => {
+      if (!audioRef.current) {
+        console.log('🎵 audioRef perso durante fade in');
+        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+        return;
+      }
+
+      currentVolume += 0.02;
+      if (currentVolume >= backgroundVolume) {
+        currentVolume = backgroundVolume;
+        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+        console.log('🎵 Fade in completato - volume finale:', currentVolume);
+      }
+      audioRef.current.volume = currentVolume;
+    }, 50);
+  }, [isPlaying, isPaused, currentTrackIndex, backgroundTracks, backgroundVolume]);
 
   // Monitora i cambiamenti del player principale
   useEffect(() => {
     // Ascolta eventi globali dal player principale
     const handleMainPlayerPlay = () => fadeOutBackground();
-    const handleMainPlayerPause = () => setTimeout(fadeInBackground, 500);
+    const handleMainPlayerPause = () => {
+      console.log('🎵 BackgroundMusic: ricevuto evento mainPlayerPause');
+      console.log('🎵 Stato attuale - isPlaying:', isPlaying, 'isPaused:', isPaused, 'tracks:', backgroundTracks.length);
+      setTimeout(fadeInBackground, 500);
+    };
     const handleMainPlayerStop = () => setTimeout(fadeInBackground, 500);
 
     window.addEventListener('mainPlayerPlay', handleMainPlayerPlay);

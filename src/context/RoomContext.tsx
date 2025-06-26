@@ -390,7 +390,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       
       // FAR RIPRENDERE IMMEDIATAMENTE LA MUSICA DI BACKGROUND
       // Non appena il giocatore fa buzz, la musica riprende
+      console.log('🎵 BUZZ FATTO! Invio evento mainPlayerPause per riprendere musica background');
       window.dispatchEvent(new CustomEvent('mainPlayerPause'));
+      console.log('🎵 Evento mainPlayerPause inviato con successo');
       
     } catch (err) {
       console.error('Errore nel registrare il buzz:', err);
