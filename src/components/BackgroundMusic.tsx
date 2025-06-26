@@ -24,6 +24,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
   const [backgroundVolume, setBackgroundVolume] = useState(volume);
   const [isMuted, setIsMuted] = useState(false);
   const [previousVolume, setPreviousVolume] = useState(volume);
+  const [savedCurrentTime, setSavedCurrentTime] = useState(0);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -32,7 +33,11 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
   const fadeOutBackground = useCallback(() => {
     if (!audioRef.current || !isPlaying) return;
     
-    console.log('Fade out background music - isPlaying:', isPlaying, 'current volume:', audioRef.current.volume);
+    console.log('🎵 Fade out background music - isPlaying:', isPlaying, 'current volume:', audioRef.current.volume);
+    
+    const currentTime = audioRef.current.currentTime;
+    setSavedCurrentTime(currentTime);
+    console.log('🎵 Posizione salvata:', currentTime, 'secondi');
     
     if (fadeIntervalRef.current) {
       clearInterval(fadeIntervalRef.current);
@@ -44,9 +49,9 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       if (audioRef.current && audioRef.current.volume > 0.05) {
         const newVolume = Math.max(0, audioRef.current.volume - 0.05);
         audioRef.current.volume = newVolume;
-        console.log('Fade out progress:', newVolume);
+        console.log('🎵 Fade out progress:', newVolume);
       } else {
-        console.log('Fade out completed, pausing music');
+        console.log('🎵 Fade out completed, pausing music');
         if (audioRef.current) {
           audioRef.current.pause();
           audioRef.current.volume = originalVolume; // Ripristina il volume originale per il prossimo fade in
@@ -63,7 +68,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
 
   // Funzione per fade in graduale della musica di background
   const fadeInBackground = useCallback(() => {
-    console.log('🎵 fadeInBackground chiamata - isPlaying:', isPlaying, 'isPaused:', isPaused, 'currentIndex:', currentTrackIndex);
+    console.log('🎵 fadeInBackground chiamata - isPlaying:', isPlaying, 'isPaused:', isPaused, 'savedTime:', savedCurrentTime);
     
     if (!audioRef.current || isPlaying) {
       console.log('🎵 fadeInBackground: condizioni non soddisfatte - audioRef:', !!audioRef.current, 'isPlaying:', isPlaying);
@@ -74,15 +79,18 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       clearInterval(fadeIntervalRef.current);
     }
 
-    if (isPaused) {
-      console.log('🎵 Riprendendo musica da pausa...');
+    if (isPaused && savedCurrentTime > 0) {
+      console.log('🎵 Riprendendo musica dalla posizione salvata:', savedCurrentTime, 'secondi');
+      audioRef.current.currentTime = savedCurrentTime;
       audioRef.current.play().catch(console.error);
       setIsPaused(false);
+      setIsPlaying(true);
     } else if (backgroundTracks.length > 0 && currentTrackIndex < backgroundTracks.length) {
       console.log('🎵 Avviando nuova traccia...');
       audioRef.current.src = URL.createObjectURL(backgroundTracks[currentTrackIndex]);
       audioRef.current.play().catch(console.error);
       setIsPlaying(true);
+      setSavedCurrentTime(0);
     }
 
     // Fade in del volume
@@ -105,7 +113,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       }
       audioRef.current.volume = currentVolume;
     }, 50);
-  }, [isPlaying, isPaused, currentTrackIndex, backgroundTracks, backgroundVolume]);
+  }, [isPlaying, isPaused, currentTrackIndex, backgroundTracks, backgroundVolume, savedCurrentTime]);
 
   // Monitora i cambiamenti del player principale e del controllo da Firebase
   useEffect(() => {
@@ -229,6 +237,10 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     const nextIndex = (currentTrackIndex + 1) % backgroundTracks.length;
     setCurrentTrackIndex(nextIndex);
     
+    // 🎵 RESET DELLA POSIZIONE SALVATA QUANDO SI CAMBIA TRACCIA
+    setSavedCurrentTime(0);
+    console.log('🎵 Cambio traccia - reset posizione salvata');
+    
     if (audioRef.current) {
       audioRef.current.pause();
       URL.revokeObjectURL(audioRef.current.src);
@@ -240,9 +252,21 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     if (!audioRef.current || backgroundTracks.length === 0) return;
     
     if (isPlaying && !isPaused) {
+      // 🎵 SALVA LA POSIZIONE QUANDO L'UTENTE METTE IN PAUSA MANUALMENTE
+      const currentTime = audioRef.current.currentTime;
+      setSavedCurrentTime(currentTime);
+      console.log('🎵 Pausa manuale - posizione salvata:', currentTime, 'secondi');
+      
       audioRef.current.pause();
       setIsPlaying(false);
+      setIsPaused(true);
     } else {
+      // 🎵 RIPRISTINA LA POSIZIONE QUANDO L'UTENTE RIPRENDE MANUALMENTE
+      if (savedCurrentTime > 0) {
+        console.log('🎵 Ripresa manuale - ripristino posizione:', savedCurrentTime, 'secondi');
+        audioRef.current.currentTime = savedCurrentTime;
+      }
+      
       audioRef.current.play().then(() => {
         setIsPlaying(true);
         setIsPaused(false);
