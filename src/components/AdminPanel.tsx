@@ -18,14 +18,20 @@ const AdminPanel: React.FC = () => {
     setIsLoading(true);
     try {
       console.log('🔍 Recupero lista stanze...');
+      console.log('Database URL:', database.app.options.databaseURL);
       
-      // Accesso diretto al database Firebase
+      // Accesso diretto al database Firebase con gestione errori avanzata
       const roomsRef = ref(database, 'rooms');
+      console.log('Ref creato:', roomsRef.toString());
+      
       const snapshot = await get(roomsRef);
+      console.log('Snapshot ottenuto:', snapshot.exists());
       
       if (snapshot.exists()) {
-        const rooms = snapshot.val();
-        const roomList = Object.entries(rooms).map(([roomCode, roomData]: [string, any]) => ({
+        const roomsData = snapshot.val();
+        console.log('Dati ricevuti:', roomsData);
+        
+        const roomList = Object.entries(roomsData).map(([roomCode, roomData]: [string, any]) => ({
           roomCode,
           hostName: roomData.hostName || 'Host sconosciuto',
           playerCount: roomData.players ? Object.keys(roomData.players).length : 0,
@@ -40,21 +46,30 @@ const AdminPanel: React.FC = () => {
         setRooms([]);
         toast.info('Nessuna stanza trovata');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Errore nel recuperare le stanze:', error);
-      toast.error(`Errore nel recuperare le stanze: ${error.message}`);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
       
-      // Prova un approccio alternativo con mock data per il debug
-      console.log('🔧 Tentativo con dati di test...');
-      const mockRooms: RoomInfo[] = [
-        {
-          roomCode: 'TEST',
-          hostName: 'Test Host',
-          playerCount: 0,
-          createdAt: Date.now()
-        }
-      ];
-      setRooms(mockRooms);
+      // Se c'è un errore di permessi, prova con dati mock per debug
+      if (error.code === 'PERMISSION_DENIED') {
+        console.log('🔧 Errore di permessi - usando dati di test per debug');
+        toast.error('Errore di permessi Firebase - usando dati di test');
+        
+        // Mock data per il debug
+        const mockRooms: RoomInfo[] = [
+          {
+            roomCode: 'TEST',
+            hostName: 'Test Host',
+            playerCount: 0,
+            createdAt: Date.now()
+          }
+        ];
+        setRooms(mockRooms);
+      } else {
+        toast.error(`Errore nel recuperare le stanze: ${error.message}`);
+        setRooms([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -69,16 +84,32 @@ const AdminPanel: React.FC = () => {
     try {
       console.log('🗑️ Eliminazione di tutte le stanze...');
       
-      // Elimina tutte le stanze
+      // Prima ottieni la lista delle stanze per conferma
       const roomsRef = ref(database, 'rooms');
-      await set(roomsRef, null);
+      const snapshot = await get(roomsRef);
       
-      console.log('✅ Tutte le stanze eliminate con successo');
-      setRooms([]);
-      toast.success('Tutte le stanze sono state eliminate con successo!');
-    } catch (error) {
+      if (snapshot.exists()) {
+        const roomsData = snapshot.val();
+        const roomCodes = Object.keys(roomsData);
+        console.log(`Eliminando ${roomCodes.length} stanze:`, roomCodes);
+        
+        // Elimina tutte le stanze
+        await set(roomsRef, null);
+        
+        console.log('✅ Tutte le stanze eliminate con successo');
+        setRooms([]);
+        toast.success(`Eliminate con successo ${roomCodes.length} stanze!`);
+      } else {
+        console.log('📭 Nessuna stanza da eliminare');
+        toast.info('Nessuna stanza da eliminare');
+      }
+    } catch (error: any) {
       console.error('❌ Errore nell\'eliminare le stanze:', error);
-      toast.error(`Errore nell\'eliminare le stanze: ${error.message}`);
+      if (error.code === 'PERMISSION_DENIED') {
+        toast.error('Errore di permessi: non puoi eliminare le stanze');
+      } else {
+        toast.error(`Errore nell\'eliminare le stanze: ${error.message}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -100,9 +131,13 @@ const AdminPanel: React.FC = () => {
       
       console.log(`✅ Stanza ${roomCode} eliminata con successo`);
       toast.success(`Stanza ${roomCode} eliminata con successo!`);
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ Errore nell'eliminare la stanza ${roomCode}:`, error);
-      toast.error(`Errore nell'eliminare la stanza ${roomCode}: ${error.message}`);
+      if (error.code === 'PERMISSION_DENIED') {
+        toast.error(`Errore di permessi: non puoi eliminare la stanza ${roomCode}`);
+      } else {
+        toast.error(`Errore nell'eliminare la stanza ${roomCode}: ${error.message}`);
+      }
     }
   };
 
@@ -181,15 +216,45 @@ const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Debug Info */}
+      {/* Debug Info Avanzato */}
       <div className="mt-6 p-4 bg-gray-800/20 rounded-lg">
         <h4 className="text-white font-semibold mb-2">🔧 Debug Info</h4>
-        <p className="text-gray-300 text-sm">
-          Database URL: {database.app.options.databaseURL}
-        </p>
-        <p className="text-gray-300 text-sm">
-          Ultimo aggiornamento: {new Date().toLocaleString()}
-        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+          <p className="text-gray-300">
+            <strong>Database URL:</strong> {database.app.options.databaseURL}
+          </p>
+          <p className="text-gray-300">
+            <strong>Project ID:</strong> {database.app.options.projectId}
+          </p>
+          <p className="text-gray-300">
+            <strong>Ultimo aggiornamento:</strong> {new Date().toLocaleString()}
+          </p>
+          <p className="text-gray-300">
+            <strong>Stanze caricate:</strong> {rooms.length}
+          </p>
+        </div>
+        
+        {/* Test di connessione */}
+        <div className="mt-4">
+          <button
+            onClick={async () => {
+              try {
+                console.log('🔧 Test connessione Firebase...');
+                const testRef = ref(database, '.info/connected');
+                const snapshot = await get(testRef);
+                const connected = snapshot.val();
+                console.log('Connessione Firebase:', connected);
+                toast.info(`Connessione Firebase: ${connected ? 'Attiva' : 'Non attiva'}`);
+              } catch (error) {
+                console.error('Errore test connessione:', error);
+                toast.error('Errore nel test di connessione');
+              }
+            }}
+            className="px-3 py-1 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded text-sm transition-colors border border-yellow-500/30"
+          >
+            🔧 Test Connessione
+          </button>
+        </div>
       </div>
     </div>
   );
