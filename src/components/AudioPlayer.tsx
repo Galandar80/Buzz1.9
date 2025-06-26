@@ -160,7 +160,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
 
   // Funzione separata per l'esecuzione dell'audio (senza countdown)
   const executePlayAudio = useCallback((file: File, column: 'left' | 'right') => {
+    console.log('🎵 executePlayAudio chiamata per:', file.name);
+    
     if (currentAudio) {
+      console.log('🎵 Fermando audio corrente...');
       currentAudio.pause();
       setCurrentAudio(null);
     }
@@ -171,17 +174,20 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
 
     // Event listeners per sincronizzazione
     newAudio.addEventListener('play', () => {
+      console.log('🎵 Audio effettivamente avviato - invio evento mainPlayerPlay');
       window.dispatchEvent(new CustomEvent('mainPlayerPlay'));
       window.dispatchEvent(new CustomEvent('enableBuzzForSong'));
       setIsRemotePlaying(true);
     });
     
     newAudio.addEventListener('pause', () => {
+      console.log('🎵 Audio in pausa - invio evento mainPlayerPause');
       window.dispatchEvent(new CustomEvent('mainPlayerPause'));
       setIsRemotePlaying(false);
     });
 
     newAudio.addEventListener('ended', () => {
+      console.log('🎵 Audio terminato - invio evento mainPlayerStop');
       window.dispatchEvent(new CustomEvent('mainPlayerStop'));
       window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
       setIsRemotePlaying(false);
@@ -209,17 +215,24 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
 
     // Inizia il fade in del volume
     newAudio.volume = 0;
+    console.log('🎵 Avviando riproduzione audio...');
+    
     newAudio.play().then(() => {
+      console.log('🎵 Audio play() riuscito - iniziando fade in');
       let currentVolume = 0;
       const fadeInterval = setInterval(() => {
         currentVolume += 0.05;
         if (currentVolume >= masterVolume) {
           currentVolume = masterVolume;
           clearInterval(fadeInterval);
+          console.log('🎵 Fade in completato - volume finale:', currentVolume);
         }
         newAudio.volume = currentVolume;
       }, 50);
-    }).catch(console.error);
+    }).catch(error => {
+      console.error('🎵 Errore durante play():', error);
+      toast.error('Errore durante la riproduzione dell\'audio');
+    });
 
     setCurrentAudio(newAudio);
     setCurrentColumn(column);
@@ -271,16 +284,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
         songName: ''
       });
 
-      // Pausa la musica di background PRIMA di avviare la musica principale
-      console.log('🎵 Invio evento per pausare musica di background');
-      window.dispatchEvent(new CustomEvent('mainPlayerPlay'));
-
-      // Avvia l'audio dopo il countdown con un piccolo delay per assicurarsi che l'evento sia processato
-      setTimeout(() => {
-        console.log('🎵 Esecuzione audio dopo countdown:', audioData.file.name);
-        executePlayAudio(audioData.file, audioData.column);
-        setPendingAudioData(null);
-      }, 200);
+      // L'evento mainPlayerPlay sarà inviato automaticamente quando l'audio inizia effettivamente
+      console.log('🎵 Esecuzione audio dopo countdown:', audioData.file.name);
+      executePlayAudio(audioData.file, audioData.column);
+      setPendingAudioData(null);
 
     } catch (error) {
       console.error('Errore durante il countdown:', error);

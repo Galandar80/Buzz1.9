@@ -31,7 +31,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
 
   // Funzione per gestire il fade out quando il player principale inizia
   const fadeOutBackground = useCallback(() => {
-    if (!audioRef.current || !isPlaying) return;
+    if (!audioRef.current || !isPlaying || isPaused) return;
     
     console.log('🎵 Fade out background music - isPlaying:', isPlaying, 'current volume:', audioRef.current.volume);
     
@@ -47,7 +47,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     
     fadeIntervalRef.current = setInterval(() => {
       if (audioRef.current && audioRef.current.volume > 0.05) {
-        const newVolume = Math.max(0, audioRef.current.volume - 0.05);
+        const newVolume = Math.max(0, audioRef.current.volume - 0.1);
         audioRef.current.volume = newVolume;
         console.log('🎵 Fade out progress:', newVolume);
       } else {
@@ -63,15 +63,15 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
           fadeIntervalRef.current = null;
         }
       }
-    }, 100);
-  }, [isPlaying]);
+    }, 50);
+  }, [isPlaying, isPaused]);
 
   // Funzione per fade in graduale della musica di background
   const fadeInBackground = useCallback(() => {
     console.log('🎵 fadeInBackground chiamata - isPlaying:', isPlaying, 'isPaused:', isPaused, 'savedTime:', savedCurrentTime);
     
-    if (!audioRef.current || isPlaying) {
-      console.log('🎵 fadeInBackground: condizioni non soddisfatte - audioRef:', !!audioRef.current, 'isPlaying:', isPlaying);
+    if (!audioRef.current || (isPlaying && !isPaused)) {
+      console.log('🎵 fadeInBackground: condizioni non soddisfatte - audioRef:', !!audioRef.current, 'isPlaying:', isPlaying, 'isPaused:', isPaused);
       return;
     }
 
@@ -79,18 +79,23 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       clearInterval(fadeIntervalRef.current);
     }
 
+    // Se era in pausa e abbiamo una posizione salvata, riprendi da lì
     if (isPaused && savedCurrentTime > 0) {
       console.log('🎵 Riprendendo musica dalla posizione salvata:', savedCurrentTime, 'secondi');
       audioRef.current.currentTime = savedCurrentTime;
-      audioRef.current.play().catch(console.error);
-      setIsPaused(false);
-      setIsPlaying(true);
-    } else if (backgroundTracks.length > 0 && currentTrackIndex < backgroundTracks.length) {
+      audioRef.current.volume = 0; // Inizia con volume 0 per il fade in
+      audioRef.current.play().then(() => {
+        setIsPaused(false);
+        setIsPlaying(true);
+      }).catch(console.error);
+    } else if (backgroundTracks.length > 0 && currentTrackIndex < backgroundTracks.length && !isPlaying) {
       console.log('🎵 Avviando nuova traccia...');
       audioRef.current.src = URL.createObjectURL(backgroundTracks[currentTrackIndex]);
-      audioRef.current.play().catch(console.error);
-      setIsPlaying(true);
-      setSavedCurrentTime(0);
+      audioRef.current.volume = 0; // Inizia con volume 0 per il fade in
+      audioRef.current.play().then(() => {
+        setIsPlaying(true);
+        setSavedCurrentTime(0);
+      }).catch(console.error);
     }
 
     // Fade in del volume
@@ -105,10 +110,13 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
         return;
       }
 
-      currentVolume += 0.02;
+      currentVolume += 0.05;
       if (currentVolume >= backgroundVolume) {
         currentVolume = backgroundVolume;
-        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+        if (fadeIntervalRef.current) {
+          clearInterval(fadeIntervalRef.current);
+          fadeIntervalRef.current = null;
+        }
         console.log('🎵 Fade in completato - volume finale:', currentVolume);
       }
       audioRef.current.volume = currentVolume;
@@ -118,13 +126,28 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
   // Monitora i cambiamenti del player principale e del controllo da Firebase
   useEffect(() => {
     // Ascolta eventi globali dal player principale
-    const handleMainPlayerPlay = () => fadeOutBackground();
+    const handleMainPlayerPlay = () => {
+      console.log('🎵 BackgroundMusic: ricevuto evento mainPlayerPlay');
+      fadeOutBackground();
+    };
+    
     const handleMainPlayerPause = () => {
       console.log('🎵 BackgroundMusic: ricevuto evento mainPlayerPause');
       console.log('🎵 Stato attuale - isPlaying:', isPlaying, 'isPaused:', isPaused, 'tracks:', backgroundTracks.length);
-      setTimeout(fadeInBackground, 500);
+      // Delay più lungo per assicurarsi che l'audio principale si sia fermato
+      setTimeout(() => {
+        console.log('🎵 Eseguendo fade in dopo pausa del player principale');
+        fadeInBackground();
+      }, 1000);
     };
-    const handleMainPlayerStop = () => setTimeout(fadeInBackground, 500);
+    
+    const handleMainPlayerStop = () => {
+      console.log('🎵 BackgroundMusic: ricevuto evento mainPlayerStop');
+      setTimeout(() => {
+        console.log('🎵 Eseguendo fade in dopo stop del player principale');
+        fadeInBackground();
+      }, 1000);
+    };
 
     window.addEventListener('mainPlayerPlay', handleMainPlayerPlay);
     window.addEventListener('mainPlayerPause', handleMainPlayerPause);
@@ -137,8 +160,9 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
         const controlData = snapshot.val();
         if (controlData && controlData.action === 'resume') {
           console.log('🎵 BackgroundMusic: ricevuto comando resume da Firebase');
-          console.log('🎵 Stato attuale - isPlaying:', isPlaying, 'isPaused:', isPaused, 'tracks:', backgroundTracks.length);
-          setTimeout(fadeInBackground, 500);
+          setTimeout(() => {
+            fadeInBackground();
+          }, 1000);
         }
       });
 
@@ -161,7 +185,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
         clearInterval(fadeIntervalRef.current);
       }
     };
-  }, [fadeOutBackground, fadeInBackground, roomCode, isPlaying, isPaused, backgroundTracks.length]);
+  }, [fadeOutBackground, fadeInBackground, roomCode]);
 
   // Inizializza l'audio quando ci sono tracce disponibili
   useEffect(() => {
