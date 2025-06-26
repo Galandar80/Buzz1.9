@@ -181,7 +181,10 @@ const BuzzButton: React.FC<BuzzButtonProps> = ({ disabled = false }) => {
       {!isHost && !isBuzzEnabled && (
         <div className="bg-orange-500/20 border border-orange-500/30 rounded-lg p-3 text-center">
           <p className="text-orange-300 text-sm font-medium">
-            🚫 Buzz disabilitato dall'host
+            {winnerName ? 
+              '⏸️ Buzz disabilitato - Attendi la valutazione dell\'host' :
+              '⏳ Attendi che inizi la canzone per poter premere BUZZ'
+            }
           </p>
         </div>
       )}
@@ -200,7 +203,7 @@ const BuzzButton: React.FC<BuzzButtonProps> = ({ disabled = false }) => {
         `}
       >
         <span className="text-white text-4xl sm:text-5xl font-bold z-10 tracking-wider shadow-text">
-          {!isBuzzEnabled ? 'BUZZ\nDISABILITATO' : 'BUZZ!'}
+          {!isBuzzEnabled ? 'ATTENDI...' : 'BUZZ!'}
         </span>
       </button>
     </div>

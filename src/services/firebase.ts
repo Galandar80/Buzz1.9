@@ -57,27 +57,25 @@ export const checkRoomExists = async (roomCode: string): Promise<boolean> => {
 };
 
 export const createRoom = async (roomCode: string, hostName: string, hostId: string): Promise<void> => {
-  const now = Date.now();
   const roomRef = ref(database, `rooms/${roomCode}`);
-  await set(roomRef, {
+  const room = {
     hostName,
-    createdAt: now,
-    lastActivity: now,
+    hostId,
+    createdAt: Date.now(),
+    lastActivity: Date.now(),
     winnerInfo: null,
-    buzzEnabled: true,
+    buzzEnabled: false, // Il buzz inizia disabilitato e si attiva con le canzoni
     players: {
-      [hostId]: { 
-        name: hostName, 
-        isHost: true, 
-        joinedAt: now,
-        points: 0 
+      [hostId]: {
+        name: hostName,
+        isHost: true,
+        joinedAt: Date.now(),
+        points: 0
       }
-    },
-    playedSongs: []
-  });
+    }
+  };
   
-  // Aggiorna immediatamente l'attività per essere sicuri
-  await updateRoomActivity(roomCode);
+  await set(roomRef, room);
 };
 
 const checkExistingPlayer = async (roomCode: string, playerName: string): Promise<{exists: boolean, playerId?: string, points?: number, isHost?: boolean}> => {

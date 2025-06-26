@@ -9,6 +9,60 @@ interface AudioPlayerProps {
   onAudioPause?: () => void;
 }
 
+// Componente CountdownOverlay integrato
+const CountdownOverlay: React.FC<{ count: number; songName: string; isVisible: boolean }> = ({ 
+  count, 
+  songName, 
+  isVisible 
+}) => {
+  if (!isVisible) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center">
+      <div className="text-center space-y-8 animate-scale-in">
+        <div className="space-y-4">
+          <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">
+            🎵 Partenza tra...
+          </h2>
+        </div>
+        
+        <div className="relative">
+          <div className={`
+            text-8xl md:text-9xl font-bold text-white 
+            animate-pulse-buzz shadow-text
+            ${count <= 1 ? 'text-red-400' : count <= 2 ? 'text-yellow-400' : 'text-green-400'}
+          `}>
+            {count}
+          </div>
+          
+          {/* Cerchio animato intorno al numero */}
+          <div className={`
+            absolute inset-0 rounded-full border-4 animate-ping
+            ${count <= 1 ? 'border-red-400' : count <= 2 ? 'border-yellow-400' : 'border-green-400'}
+          `} style={{ 
+            width: '200px', 
+            height: '200px',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)'
+          }} />
+        </div>
+        
+        <div className="space-y-2">
+          <p className="text-white/60 text-sm">
+            Preparatevi! La canzone inizierà tra pochissimo...
+          </p>
+          <div className="flex items-center justify-center gap-2 text-white/40 text-xs">
+            <span>🎯</span>
+            <span>Ascoltate attentamente e premete BUZZ quando sapete la risposta</span>
+            <span>🎯</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
   const { isHost, roomData, roomCode } = useRoom();
   const [leftFiles, setLeftFiles] = useState<File[]>([]);
@@ -24,10 +78,48 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
   const [isRemotePlaying, setIsRemotePlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  
+  // Stati per il countdown
+  const [isCountdownActive, setIsCountdownActive] = useState(false);
+  const [countdownValue, setCountdownValue] = useState(3);
+  const [pendingAudioData, setPendingAudioData] = useState<{
+    file: File;
+    column: 'left' | 'right';
+  } | null>(null);
 
   const leftTbodyRef = useRef<HTMLTableSectionElement>(null);
   const rightTbodyRef = useRef<HTMLTableSectionElement>(null);
   const streamManagerRef = useRef<AudioStreamManager | null>(null);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Gestione eventi globali del countdown per la sincronizzazione
+  useEffect(() => {
+    const handleCountdownStart = (e: CustomEvent) => {
+      setIsCountdownActive(true);
+      setCountdownValue(3);
+      setPendingAudioData(e.detail);
+    };
+
+    const handleCountdownUpdate = (e: CustomEvent) => {
+      setCountdownValue(e.detail.count);
+    };
+
+    const handleCountdownEnd = () => {
+      setIsCountdownActive(false);
+      setCountdownValue(3);
+      setPendingAudioData(null);
+    };
+
+    window.addEventListener('countdownStart', handleCountdownStart as EventListener);
+    window.addEventListener('countdownUpdate', handleCountdownUpdate as EventListener);
+    window.addEventListener('countdownEnd', handleCountdownEnd);
+
+    return () => {
+      window.removeEventListener('countdownStart', handleCountdownStart as EventListener);
+      window.removeEventListener('countdownUpdate', handleCountdownUpdate as EventListener);
+      window.removeEventListener('countdownEnd', handleCountdownEnd);
+    };
+  }, []);
 
   // Inizializza WebRTC quando necessario
   useEffect(() => {
@@ -41,8 +133,132 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     }
   }, [roomCode, isHost]);
 
+  // Funzione per avviare il countdown
+  const startCountdown = useCallback((file: File, column: 'left' | 'right') => {
+    // Disabilita il buzz durante il countdown
+    window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
+    
+    // Invia evento globale per sincronizzare tutti i display
+    window.dispatchEvent(new CustomEvent('countdownStart', {
+      detail: { file, column, songName: file.name }
+    }));
+
+    setIsCountdownActive(true);
+    setCountdownValue(3);
+    setPendingAudioData({ file, column });
+
+    let count = 3;
+    
+    countdownIntervalRef.current = setInterval(() => {
+      count--;
+      setCountdownValue(count);
+      
+      // Invia evento di aggiornamento per tutti i display
+      window.dispatchEvent(new CustomEvent('countdownUpdate', {
+        detail: { count, songName: file.name }
+      }));
+
+      if (count <= 0) {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+        
+        // Countdown terminato, avvia l'audio
+        setIsCountdownActive(false);
+        setPendingAudioData(null);
+        
+        // Invia evento di fine countdown
+        window.dispatchEvent(new CustomEvent('countdownEnd'));
+        
+        // Esegui l'audio effettivo
+        executePlayAudio(file, column);
+      }
+    }, 1000);
+  }, []);
+
+  // Funzione separata per l'esecuzione effettiva dell'audio
+  const executePlayAudio = useCallback((file: File, column: 'left' | 'right') => {
+    if (currentAudio) {
+      currentAudio.pause();
+    }
+
+    // Invia evento per far pausare la musica di background
+    window.dispatchEvent(new CustomEvent('mainPlayerPlay'));
+
+    const audio = new Audio(URL.createObjectURL(file));
+    audio.volume = 0; // Inizia con volume 0 per il fade in
+    
+    // Cattura l'audio del sistema quando viene riprodotto
+    if (isHost && streamManagerRef.current) {
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaElementSource(audio);
+      const destination = audioContext.createMediaStreamDestination();
+      source.connect(destination);
+      source.connect(audioContext.destination);
+
+      // Invia lo stream audio attraverso WebRTC
+      const stream = destination.stream;
+      streamManagerRef.current.setAudioStream(stream);
+    }
+    
+    audio.onended = () => {
+      // Disabilita il buzz quando la canzone finisce
+      window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
+      
+      // Invia evento per far riprendere la musica di background
+      window.dispatchEvent(new CustomEvent('mainPlayerPause'));
+      
+      if ((column === 'left' && loopMode.left) || (column === 'right' && loopMode.right)) {
+        startCountdown(file, column); // Riavvia con countdown anche per il loop
+      } else {
+        setCurrentAudio(null);
+        setNowPlaying(prev => ({ ...prev, [column]: '' }));
+      }
+    };
+
+    // Fade in effect con callback per abilitare il buzz
+    audio.play().then(() => {
+      const fadeIn = setInterval(() => {
+        if (audio && audio.volume < masterVolume) {
+          audio.volume = Math.min(masterVolume, audio.volume + 0.1);
+        } else {
+          clearInterval(fadeIn);
+          // Quando il fade in è completato, abilita il buzz
+          window.dispatchEvent(new CustomEvent('enableBuzzForSong'));
+        }
+      }, 50);
+    });
+
+    setCurrentAudio(audio);
+    setCurrentColumn(column);
+    setNowPlaying(prev => ({ ...prev, [column]: file.name }));
+
+    // Aggiungi il brano all'elenco dei brani già riprodotti in Firebase
+    if (roomCode && isHost) {
+      addPlayedSong(roomCode, file.name).catch(console.error);
+    }
+
+    // Mostra notifica di avvio
+    toast.success(`🎵 Riproduzione iniziata: ${file.name}`, {
+      duration: 3000,
+    });
+  }, [currentAudio, isHost, streamManagerRef, masterVolume, loopMode, roomCode, startCountdown]);
+
   // Funzione per fermare la riproduzione audio
   const stopAudioPlayback = useCallback(() => {
+    // Ferma anche il countdown se attivo
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setIsCountdownActive(false);
+    setPendingAudioData(null);
+    window.dispatchEvent(new CustomEvent('countdownEnd'));
+
+    // Disabilita il buzz quando si ferma manualmente l'audio
+    window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
+
     if (currentAudio) {
       // Fade out effect
       const fadeOut = setInterval(() => {
@@ -119,6 +335,15 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     }
   }, [currentAudio]);
 
+  // Cleanup del countdown quando il componente viene smontato
+  useEffect(() => {
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, []);
+
   const handleFileSelect = (column: 'left' | 'right') => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -144,62 +369,20 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     input.click();
   };
 
-  const playAudio = (file: File, column: 'left' | 'right') => {
-    if (currentAudio) {
-      currentAudio.pause();
-    }
-
-    // Invia evento per far pausare la musica di background
-    window.dispatchEvent(new CustomEvent('mainPlayerPlay'));
-
-    const audio = new Audio(URL.createObjectURL(file));
-    audio.volume = 0; // Inizia con volume 0 per il fade in
+  // Modifica la funzione playAudio principale per usare il countdown
+  const playAudio = useCallback((file: File, column: 'left' | 'right') => {
+    // Solo l'host può avviare il countdown
+    if (!isHost) return;
     
-    // Cattura l'audio del sistema quando viene riprodotto
-    if (isHost && streamManagerRef.current) {
-      const audioContext = new AudioContext();
-      const source = audioContext.createMediaElementSource(audio);
-      const destination = audioContext.createMediaStreamDestination();
-      source.connect(destination);
-      source.connect(audioContext.destination);
-
-      // Invia lo stream audio attraverso WebRTC
-      const stream = destination.stream;
-      streamManagerRef.current.setAudioStream(stream);
+    // Se c'è già un countdown attivo, ignoralo
+    if (isCountdownActive) {
+      toast.info('Countdown già in corso...', { duration: 2000 });
+      return;
     }
-    
-    audio.onended = () => {
-      // Invia evento per far riprendere la musica di background
-      window.dispatchEvent(new CustomEvent('mainPlayerPause'));
-      
-      if ((column === 'left' && loopMode.left) || (column === 'right' && loopMode.right)) {
-        playAudio(file, column);
-      } else {
-        setCurrentAudio(null);
-        setNowPlaying(prev => ({ ...prev, [column]: '' }));
-      }
-    };
 
-    // Fade in effect
-    audio.play().then(() => {
-      const fadeIn = setInterval(() => {
-        if (audio && audio.volume < masterVolume) {
-          audio.volume = Math.min(masterVolume, audio.volume + 0.1);
-        } else {
-          clearInterval(fadeIn);
-        }
-      }, 50);
-    });
-
-    setCurrentAudio(audio);
-    setCurrentColumn(column);
-    setNowPlaying(prev => ({ ...prev, [column]: file.name }));
-
-    // Aggiungi il brano all'elenco dei brani già riprodotti in Firebase
-    if (roomCode && isHost) {
-      addPlayedSong(roomCode, file.name).catch(console.error);
-    }
-  };
+    // Avvia il countdown di 3 secondi
+    startCountdown(file, column);
+  }, [isHost, isCountdownActive, startCountdown]);
 
   const toggleLoop = (column: 'left' | 'right') => {
     setLoopMode(prev => ({ ...prev, [column]: !prev[column] }));
@@ -273,6 +456,15 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
   // Funzione per resettare completamente il player audio (solo per l'host)
   const resetAudioPlayer = useCallback(() => {
     try {
+      // Ferma il countdown se attivo
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      setIsCountdownActive(false);
+      setPendingAudioData(null);
+      window.dispatchEvent(new CustomEvent('countdownEnd'));
+
       // Ferma l'audio corrente
       if (currentAudio) {
         currentAudio.pause();
@@ -316,6 +508,13 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
 
   return (
     <>
+      {/* Countdown Overlay - Visibile su tutti i display */}
+      <CountdownOverlay 
+        count={countdownValue}
+        songName={pendingAudioData?.file?.name || ''}
+        isVisible={isCountdownActive}
+      />
+
       {/* Il layout principale con le liste dei file e i controlli superiori per l'host */}
       {isHost && (
         <div className="w-full max-w-6xl mx-auto p-6 bg-white/10 backdrop-blur-md rounded-xl shadow-lg border border-white/20 mb-24"> {/* Aggiungo margine inferiore per non nascondere la barra fissa */}

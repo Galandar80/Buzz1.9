@@ -147,10 +147,10 @@ export interface ScoreHistory {
 
 export function RoomProvider({ children }: { children: ReactNode }) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
-  const [playerName, setPlayerName] = useState<string>('');
+  const [playerName, setPlayerName] = useState<string | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [roomData, setRoomData] = useState<RoomData | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioStreamManager, setAudioStreamManager] = useState<AudioStreamManager | null>(null);
   const [currentGameMode, setCurrentGameMode] = useState<GameMode | null>(null);
@@ -217,6 +217,30 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       }
     }
   ];
+
+  // Gestione eventi automatici del buzz per le canzoni
+  useEffect(() => {
+    const handleEnableBuzzForSong = () => {
+      if (isHost && roomCode) {
+        enableBuzz();
+      }
+    };
+
+    const handleDisableBuzzForSong = () => {
+      if (isHost && roomCode) {
+        disableBuzz();
+      }
+    };
+
+    // Ascolta gli eventi dal player audio
+    window.addEventListener('enableBuzzForSong', handleEnableBuzzForSong);
+    window.addEventListener('disableBuzzForSong', handleDisableBuzzForSong);
+
+    return () => {
+      window.removeEventListener('enableBuzzForSong', handleEnableBuzzForSong);
+      window.removeEventListener('disableBuzzForSong', handleDisableBuzzForSong);
+    };
+  }, [isHost, roomCode]);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -410,6 +434,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       
       await rejectPlayerAnswer(roomCode);
       
+      // Disabilita il buzz dopo aver dato la risposta
+      await disableBuzz();
+      
       // Notifica alla musica di background che può riprendere
       window.dispatchEvent(new CustomEvent('mainPlayerPause'));
       
@@ -445,6 +472,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       });
       
       await rejectPlayerAnswer(roomCode);
+      
+      // Disabilita il buzz dopo aver dato la risposta
+      await disableBuzz();
       
       // Notifica alla musica di background che può riprendere
       window.dispatchEvent(new CustomEvent('mainPlayerPause'));
@@ -484,6 +514,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       
       await rejectPlayerAnswer(roomCode);
       
+      // Disabilita il buzz dopo aver dato la risposta
+      await disableBuzz();
+      
       // Notifica alla musica di background che può riprendere
       window.dispatchEvent(new CustomEvent('mainPlayerPause'));
       
@@ -510,6 +543,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       // Mantieni anche il sistema legacy per compatibilità
       await assignPoints(roomCode, winnerInfo.playerId, amount);
       
+      // Disabilita il buzz dopo aver dato la risposta
+      await disableBuzz();
+      
     } catch (err) {
       console.error('Errore nell\'assegnare punti:', err);
       toast.error('Errore nell\'assegnare punti');
@@ -531,6 +567,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       // Mantieni anche il sistema legacy per compatibilità
       await subtractPoints(roomCode, winnerInfo.playerId, amount);
       
+      // Disabilita il buzz dopo aver dato la risposta
+      await disableBuzz();
+      
     } catch (err) {
       console.error('Errore nel sottrarre punti:', err);
       toast.error('Errore nel sottrarre punti');
@@ -542,6 +581,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     
     try {
       await rejectPlayerAnswer(roomCode);
+      
+      // Disabilita il buzz dopo aver rifiutato la risposta
+      await disableBuzz();
       
       // Notifica alla musica di background che può riprendere
       window.dispatchEvent(new CustomEvent('mainPlayerPause'));
