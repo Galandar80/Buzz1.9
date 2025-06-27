@@ -93,7 +93,9 @@ const Room = () => {
       {/* Componente per le notifiche delle risposte */}
       <AnswerNotification />
       
-      <main className="flex-1 container mx-auto px-4 py-8">
+      <main className={`flex-1 container mx-auto px-4 py-8 transition-all duration-300 ${
+        isHost && roomData?.winnerInfo?.answer ? 'pt-32' : ''
+      }`}>
         {isLoading ? (
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
