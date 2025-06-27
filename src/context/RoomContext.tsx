@@ -16,7 +16,7 @@ import {
   database,
   ref,
   update,
-  updateRoomActivity,
+  updateBuzzActivity,
 } from '../services/firebase';
 import { AudioStreamManager } from '../services/webrtc';
 
@@ -275,25 +275,16 @@ function RoomProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!roomCode || !playerId) return;
     
-    // Aggiornamento iniziale solo una volta
-    updateRoomActivity(roomCode).catch(err => {
-      console.error("Error updating initial room activity:", err);
+    // Aggiornamento iniziale solo una volta per indicare che la stanza è attiva
+    updateBuzzActivity(roomCode).catch(err => {
+      console.error("Error updating initial buzz activity:", err);
     });
     
-    // Ridotto intervallo da 30 secondi a 2 minuti per ridurre carico database
-    // Solo per l'host per evitare multiple scritture simultanee
-    if (isHost) {
-      const interval = setInterval(() => {
-        if (roomCode) {
-          updateRoomActivity(roomCode).catch(err => {
-            console.error("Error updating room activity:", err);
-          });
-        }
-      }, 120000); // 2 minuti invece di 30 secondi
-      
-      return () => clearInterval(interval);
-    }
-  }, [roomCode, playerId, isHost]);
+    // RIMOSSO: Non serve più l'intervallo periodico 
+    // perché ora tracciamo solo l'attività del buzz (180 minuti di timeout)
+    // L'attività viene aggiornata automaticamente quando viene premuto il buzz
+    
+  }, [roomCode, playerId]);
 
   useEffect(() => {
     if (roomCode && isHost) {
@@ -424,7 +415,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
     
     try {
       await resetBuzz(roomCode);
-      await updateRoomActivity(roomCode);
+      await updateBuzzActivity(roomCode);
       toast.success('Buzz resettato');
     } catch (err) {
       console.error('Errore nel resettare il buzz:', err);
@@ -613,7 +604,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
     
     try {
       await removePlayer(roomCode, playerId);
-      await updateRoomActivity(roomCode);
+      await updateBuzzActivity(roomCode);
       
       setRoomCode(null);
       setPlayerId(null);
@@ -637,7 +628,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
       // Imposto esplicitamente l'answer nel winnerInfo
       await update(winnerRef, {
         'winnerInfo/answer': answer,  // Percorso corretto alla proprietà answer
-        lastActivity: Date.now()
+        lastBuzzActivity: Date.now() // Aggiorna buzz activity per indicare attività nella stanza
       });
       
       console.log(`Risposta "${answer}" inviata con successo alla room ${roomCode}`);
@@ -655,7 +646,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
     try {
       await update(ref(database, `rooms/${roomCode}`), {
         gameMode: mode,
-        lastActivity: Date.now()
+        lastBuzzActivity: Date.now()
       });
       
       setCurrentGameMode(mode);
@@ -679,7 +670,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
       
       await update(ref(database, `rooms/${roomCode}`), {
         gameTimer: timer,
-        lastActivity: Date.now()
+        lastBuzzActivity: Date.now()
       });
       
       setGameTimer(timer);
@@ -841,7 +832,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
     try {
       await update(ref(database, `rooms/${roomCode}`), {
         buzzEnabled: true,
-        lastActivity: Date.now()
+        lastBuzzActivity: Date.now()
       });
       toast.success('Buzz attivato');
     } catch (err) {
@@ -856,7 +847,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
     try {
       await update(ref(database, `rooms/${roomCode}`), {
         buzzEnabled: false,
-        lastActivity: Date.now()
+        lastBuzzActivity: Date.now()
       });
       toast.success('Buzz disattivato');
     } catch (err) {

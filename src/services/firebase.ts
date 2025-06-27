@@ -24,6 +24,7 @@ interface RoomData {
   winnerInfo: WinnerInfo | null;
   players: Record<string, Player>;
   playedSongs?: string[];
+  lastBuzzActivity?: number; // Nuovo campo per tracciare l'ultima attività di buzz
 }
 
 const firebaseConfig = {
@@ -42,9 +43,8 @@ const database = getDatabase(app);
 const analytics = getAnalytics(app);
 const auth = getAuth(app);
 
-// Aumenta il timeout di inattività da 240 minuti a 24 ore (1440 minuti)
-// per evitare disconnessioni premature durante il gioco
-const ROOM_INACTIVITY_TIMEOUT = 1440 * 60 * 1000; // 24 ore in millisecondi
+// Nuovo timeout basato sul buzz: 180 minuti = 10800000 millisecondi
+const ROOM_BUZZ_INACTIVITY_TIMEOUT = 180 * 60 * 1000; // 180 minuti
 
 export const generateRoomCode = (): string => {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -62,9 +62,9 @@ export const createRoom = async (roomCode: string, hostName: string, hostId: str
     hostName,
     hostId,
     createdAt: Date.now(),
-    lastActivity: Date.now(),
+    lastBuzzActivity: Date.now(), // Inizializza con il momento della creazione
     winnerInfo: null,
-    buzzEnabled: false, // Il buzz inizia disabilitato e si attiva con le canzoni
+    buzzEnabled: false,
     players: {
       [hostId]: {
         name: hostName,
@@ -106,22 +106,18 @@ const checkExistingPlayer = async (roomCode: string, playerName: string): Promis
 
 export const joinRoom = async (roomCode: string, playerName: string): Promise<string> => {
   try {
-    // Prima verifichiamo che la stanza esista e sia attiva
     const roomRef = ref(database, `rooms/${roomCode}`);
     const roomSnapshot = await get(roomRef);
     
     if (!roomSnapshot.exists()) {
       throw new Error('Stanza non trovata');
     }
-    
+
     const roomData = roomSnapshot.val();
     
-    // Aggiorna immediatamente l'attività della stanza per evitare che venga marcata come inattiva
-    await updateRoomActivity(roomCode);
-    
-    // Controlla l'inattività solo se è davvero molto antica (più di 24 ore)
-    if (isRoomInactive(roomData.lastActivity || roomData.createdAt)) {
-      throw new Error('La stanza è scaduta per inattività');
+    // Controlla l'inattività basata sul buzz
+    if (isRoomInactiveByBuzz(roomData.lastBuzzActivity || roomData.createdAt)) {
+      throw new Error('La stanza è scaduta per inattività (nessun buzz negli ultimi 180 minuti)');
     }
 
     const existingPlayer = await checkExistingPlayer(roomCode, playerName);
@@ -152,9 +148,6 @@ export const joinRoom = async (roomCode: string, playerName: string): Promise<st
         });
       }
       
-      // Aggiorna nuovamente l'attività dopo il join
-      await updateRoomActivity(roomCode);
-      
       return existingPlayer.playerId;
     } else {
       const playerId = generatePlayerId(playerName);
@@ -169,9 +162,6 @@ export const joinRoom = async (roomCode: string, playerName: string): Promise<st
         points: 0
       });
       
-      // Aggiorna l'attività dopo il join del nuovo giocatore
-      await updateRoomActivity(roomCode);
-      
       return playerId;
     }
   } catch (error) {
@@ -184,21 +174,21 @@ export const generatePlayerId = (name: string): string => {
   return `${name.toLowerCase().replace(/\s/g, '_')}_${Date.now().toString().slice(-6)}`;
 };
 
-export const updateRoomActivity = async (roomCode: string): Promise<void> => {
+// Nuova funzione per aggiornare l'attività del buzz (sostituisce updateRoomActivity)
+export const updateBuzzActivity = async (roomCode: string): Promise<void> => {
   const roomRef = ref(database, `rooms/${roomCode}`);
   await update(roomRef, {
-    lastActivity: Date.now()
+    lastBuzzActivity: Date.now()
   });
 };
 
-const isRoomInactive = (lastActivity: number): boolean => {
+// Nuova funzione per verificare l'inattività basata sul buzz
+const isRoomInactiveByBuzz = (lastBuzzActivity: number): boolean => {
   const now = Date.now();
-  const inactive = now - lastActivity > ROOM_INACTIVITY_TIMEOUT;
-  return inactive;
+  return now - lastBuzzActivity > ROOM_BUZZ_INACTIVITY_TIMEOUT;
 };
 
 export const deleteRoom = async (roomCode: string): Promise<void> => {
-  console.log(`Deleting room ${roomCode}`);
   const roomRef = ref(database, `rooms/${roomCode}`);
   await set(roomRef, null);
 };
@@ -213,10 +203,11 @@ export const listenToRoom = (
     const data = snapshot.val();
     
     if (data) {
-      const lastActivity = data.lastActivity || data.createdAt;
+      const lastBuzzActivity = data.lastBuzzActivity || data.createdAt;
       const hasActivePlayers = data.players && Object.keys(data.players).length > 0;
       
-      if (!hasActivePlayers && isRoomInactive(lastActivity)) {
+      // Verifica inattività solo se non ci sono giocatori E se è passato troppo tempo dall'ultimo buzz
+      if (!hasActivePlayers && isRoomInactiveByBuzz(lastBuzzActivity)) {
         deleteRoom(roomCode).then(() => {
           callback(null);
         }).catch(err => {
@@ -248,7 +239,7 @@ export const registerBuzz = async (roomCode: string, playerId: string, playerNam
         playerName,
         timestamp: Date.now()
       },
-      lastActivity: Date.now()
+      lastBuzzActivity: Date.now() // Aggiorna l'attività del buzz quando viene premuto
     });
   }
 };
@@ -277,7 +268,7 @@ export const assignPoints = async (roomCode: string, playerId: string, points: n
       points: currentPoints + points
     });
     
-    await updateRoomActivity(roomCode);
+    // Non aggiorna più lastActivity, solo quando c'è buzz
     await resetBuzz(roomCode);
   }
 };
@@ -296,13 +287,13 @@ export const subtractPoints = async (roomCode: string, playerId: string, points:
       points: Math.max(0, currentPoints - points)
     });
     
-    await updateRoomActivity(roomCode);
+    // Non aggiorna più lastActivity, solo quando c'è buzz
     await resetBuzz(roomCode);
   }
 };
 
 export const rejectPlayerAnswer = async (roomCode: string): Promise<void> => {
-  await updateRoomActivity(roomCode);
+  // Rimuove updateRoomActivity, mantiene solo reset buzz
   await resetBuzz(roomCode);
 };
 
