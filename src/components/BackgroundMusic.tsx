@@ -28,22 +28,36 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const currentFadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Funzioni per il fade in/out
   const fadeOutBackground = useCallback(() => {
     console.log('🎵 Fade out background music iniziato');
+    
+    // Pulisci eventuali fade in corso
+    if (currentFadeIntervalRef.current) {
+      clearInterval(currentFadeIntervalRef.current);
+      currentFadeIntervalRef.current = null;
+    }
+    
     if (audioRef.current && (audioRef.current.paused === false || audioRef.current.currentTime > 0)) {
-      const fadeOutInterval = setInterval(() => {
+      currentFadeIntervalRef.current = setInterval(() => {
         if (audioRef.current) {
           audioRef.current.volume = Math.max(0, audioRef.current.volume - 0.1);
           
           if (audioRef.current.volume <= 0) {
-            clearInterval(fadeOutInterval);
+            if (currentFadeIntervalRef.current) {
+              clearInterval(currentFadeIntervalRef.current);
+              currentFadeIntervalRef.current = null;
+            }
             audioRef.current.pause();
             console.log('🎵 Background music messa in pausa dopo fade out');
           }
         } else {
-          clearInterval(fadeOutInterval);
+          if (currentFadeIntervalRef.current) {
+            clearInterval(currentFadeIntervalRef.current);
+            currentFadeIntervalRef.current = null;
+          }
         }
       }, 50);
     }
@@ -51,6 +65,13 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
 
   const fadeInBackground = useCallback(() => {
     console.log('🎵 Fade in background music iniziato');
+    
+    // Pulisci eventuali fade in corso
+    if (currentFadeIntervalRef.current) {
+      clearInterval(currentFadeIntervalRef.current);
+      currentFadeIntervalRef.current = null;
+    }
+    
     if (audioRef.current) {
       // Se l'audio è in pausa, riprendi dalla posizione salvata
       if (audioRef.current.paused) {
@@ -61,16 +82,22 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
         });
       }
       
-      const fadeInInterval = setInterval(() => {
+      currentFadeIntervalRef.current = setInterval(() => {
         if (audioRef.current) {
           audioRef.current.volume = Math.min(backgroundVolume, audioRef.current.volume + 0.05);
           
           if (audioRef.current.volume >= backgroundVolume) {
-            clearInterval(fadeInInterval);
+            if (currentFadeIntervalRef.current) {
+              clearInterval(currentFadeIntervalRef.current);
+              currentFadeIntervalRef.current = null;
+            }
             console.log('🎵 Fade in background music completato');
           }
         } else {
-          clearInterval(fadeInInterval);
+          if (currentFadeIntervalRef.current) {
+            clearInterval(currentFadeIntervalRef.current);
+            currentFadeIntervalRef.current = null;
+          }
         }
       }, 100);
     }
@@ -187,6 +214,10 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       }
       if (fadeIntervalRef.current) {
         clearInterval(fadeIntervalRef.current);
+      }
+      if (currentFadeIntervalRef.current) {
+        clearInterval(currentFadeIntervalRef.current);
+        currentFadeIntervalRef.current = null;
       }
     };
   }, []);
@@ -315,7 +346,9 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       }
     }, 2000); // Controlla ogni 2 secondi
 
-    return () => clearInterval(checkVolumeInterval);
+    return () => {
+      clearInterval(checkVolumeInterval);
+    };
   }, [isPlaying, isPaused, isMuted, backgroundVolume]);
 
   // Mostra il componente solo per l'host

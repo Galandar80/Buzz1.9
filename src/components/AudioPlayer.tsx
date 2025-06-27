@@ -165,10 +165,15 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     if (currentAudio) {
       console.log('🎵 Fermando audio corrente...');
       currentAudio.pause();
+      // Pulisci URL object precedente
+      if (currentAudio.src) {
+        URL.revokeObjectURL(currentAudio.src);
+      }
       setCurrentAudio(null);
     }
 
-    const newAudio = new Audio(URL.createObjectURL(file));
+    const audioURL = URL.createObjectURL(file);
+    const newAudio = new Audio(audioURL);
     newAudio.volume = masterVolume;
     newAudio.muted = isMuted;
 
@@ -192,6 +197,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
       setIsRemotePlaying(false);
       
+      // Pulisci URL object quando terminato
+      URL.revokeObjectURL(audioURL);
+      
       // Aggiungi la canzone ai brani riprodotti
       if (roomCode) {
         addPlayedSong(roomCode, file.name).catch(console.error);
@@ -213,6 +221,14 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       }
     });
 
+    newAudio.addEventListener('error', () => {
+      console.error('🎵 Errore durante la riproduzione audio');
+      URL.revokeObjectURL(audioURL);
+      toast.error('Errore durante la riproduzione dell\'audio');
+      setCurrentAudio(null);
+      setCurrentColumn(null);
+    });
+
     // Inizia il fade in del volume
     newAudio.volume = 0;
     console.log('🎵 Avviando riproduzione audio...');
@@ -231,6 +247,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       }, 50);
     }).catch(error => {
       console.error('🎵 Errore durante play():', error);
+      URL.revokeObjectURL(audioURL);
       toast.error('Errore durante la riproduzione dell\'audio');
     });
 
@@ -311,6 +328,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
           currentVolume = 0;
           currentAudio.volume = 0;
           currentAudio.pause();
+          // Pulisci URL object quando fermiamo l'audio
+          if (currentAudio.src) {
+            URL.revokeObjectURL(currentAudio.src);
+          }
           clearInterval(fadeInterval);
         } else {
           currentAudio.volume = currentVolume;

@@ -417,6 +417,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
 
     } catch (error) {
       console.error('Errore durante l\'aggiornamento del buzz:', error);
+      toast.error('Errore durante il buzz');
     }
   }, [roomCode, roomData, playerId, playerName]);
 
@@ -697,18 +698,15 @@ function RoomProvider({ children }: { children: ReactNode }) {
     
     try {
       await update(ref(database, `rooms/${roomCode}`), {
-        gameTimer: null,
-        lastActivity: Date.now()
+        gameTimer: {
+          isActive: false,
+          timeLeft: 0,
+          totalTime: 0
+        }
       });
-      
-      setGameTimer(null);
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
-      toast.info('Timer fermato');
-    } catch (err) {
-      console.error('Errore nel fermare il timer:', err);
+      toast.success('Timer fermato');
+    } catch (error) {
+      console.error('Errore nel fermare il timer:', error);
       toast.error('Errore nel fermare il timer');
     }
   }, [roomCode, isHost]);
@@ -804,7 +802,9 @@ function RoomProvider({ children }: { children: ReactNode }) {
             }
             
             if (isHost) {
-              stopGameTimer();
+              stopGameTimer().catch(error => {
+                console.error('Errore nel fermare il timer automaticamente:', error);
+              });
               toast.warning('Tempo scaduto!');
             }
           }
@@ -822,6 +822,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
       }
     };
   }, [roomData?.gameTimer, isHost, stopGameTimer]);

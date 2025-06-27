@@ -95,19 +95,29 @@ export const HotkeysManager: React.FC<HotkeysManagerProps> = ({ audioRef }) => {
   }, []);
 
   const handleToggleBuzz = useCallback(async () => {
-    if (isBuzzEnabled) {
-      await disableBuzz();
-      toast.success('Buzz DISATTIVATO', { duration: 1500 });
-    } else {
-      await enableBuzz();
-      toast.success('Buzz ATTIVATO', { duration: 1500 });
+    try {
+      if (isBuzzEnabled) {
+        await disableBuzz();
+        toast.success('Buzz DISATTIVATO', { duration: 1500 });
+      } else {
+        await enableBuzz();
+        toast.success('Buzz ATTIVATO', { duration: 1500 });
+      }
+    } catch (error) {
+      console.error('Errore nel toggle buzz:', error);
+      toast.error('Errore nel toggle buzz');
     }
   }, [isBuzzEnabled, enableBuzz, disableBuzz]);
 
   const handleCorrectAnswer = useCallback(async () => {
     if (roomData?.winnerInfo) {
-      await awardCorrectAnswer();
-      toast.success('Risposta corretta assegnata!', { duration: 1500 });
+      try {
+        await awardCorrectAnswer();
+        toast.success('Risposta corretta assegnata!', { duration: 1500 });
+      } catch (error) {
+        console.error('Errore nell\'assegnare risposta corretta:', error);
+        toast.error('Errore nell\'assegnare risposta corretta');
+      }
     } else {
       toast.error('Nessun giocatore ha buzzato', { duration: 1000 });
     }
@@ -115,8 +125,13 @@ export const HotkeysManager: React.FC<HotkeysManagerProps> = ({ audioRef }) => {
 
   const handleWrongAnswer = useCallback(async () => {
     if (roomData?.winnerInfo) {
-      await awardWrongAnswer();
-      toast.success('Risposta sbagliata assegnata!', { duration: 1500 });
+      try {
+        await awardWrongAnswer();
+        toast.success('Risposta sbagliata assegnata!', { duration: 1500 });
+      } catch (error) {
+        console.error('Errore nell\'assegnare risposta sbagliata:', error);
+        toast.error('Errore nell\'assegnare risposta sbagliata');
+      }
     } else {
       toast.error('Nessun giocatore ha buzzato', { duration: 1000 });
     }
@@ -124,8 +139,13 @@ export const HotkeysManager: React.FC<HotkeysManagerProps> = ({ audioRef }) => {
 
   const handleSuperAnswer = useCallback(async () => {
     if (roomData?.winnerInfo) {
-      await awardSuperAnswer();
-      toast.success('Risposta SUPER assegnata!', { duration: 1500 });
+      try {
+        await awardSuperAnswer();
+        toast.success('Risposta SUPER assegnata!', { duration: 1500 });
+      } catch (error) {
+        console.error('Errore nell\'assegnare risposta SUPER:', error);
+        toast.error('Errore nell\'assegnare risposta SUPER');
+      }
     } else {
       toast.error('Nessun giocatore ha buzzato', { duration: 1000 });
     }
@@ -133,8 +153,13 @@ export const HotkeysManager: React.FC<HotkeysManagerProps> = ({ audioRef }) => {
 
   const handleRejectAnswer = useCallback(async () => {
     if (roomData?.winnerInfo) {
-      await rejectAnswer();
-      toast.success('Risposta rifiutata', { duration: 1500 });
+      try {
+        await rejectAnswer();
+        toast.success('Risposta rifiutata', { duration: 1500 });
+      } catch (error) {
+        console.error('Errore nel rifiutare la risposta:', error);
+        toast.error('Errore nel rifiutare la risposta');
+      }
     } else {
       toast.error('Nessun giocatore ha buzzato', { duration: 1000 });
     }
