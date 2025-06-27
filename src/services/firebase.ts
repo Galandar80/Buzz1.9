@@ -189,16 +189,11 @@ export const updateRoomActivity = async (roomCode: string): Promise<void> => {
   await update(roomRef, {
     lastActivity: Date.now()
   });
-  console.log(`Room ${roomCode} activity updated at ${new Date().toISOString()}`);
 };
 
 const isRoomInactive = (lastActivity: number): boolean => {
   const now = Date.now();
   const inactive = now - lastActivity > ROOM_INACTIVITY_TIMEOUT;
-  if (inactive) {
-    console.log(`Room inactive: last activity was ${new Date(lastActivity).toISOString()}, current time is ${new Date(now).toISOString()}`);
-    console.log(`Time difference: ${(now - lastActivity) / 1000} seconds, threshold: ${ROOM_INACTIVITY_TIMEOUT / 1000} seconds`);
-  }
   return inactive;
 };
 
@@ -212,7 +207,6 @@ export const listenToRoom = (
   roomCode: string, 
   callback: (data: RoomData | null) => void
 ): (() => void) => {
-  console.log(`Setting up listener for room ${roomCode}`);
   const roomRef = ref(database, `rooms/${roomCode}`);
   
   const unsubscribe = onValue(roomRef, (snapshot) => {
@@ -220,31 +214,18 @@ export const listenToRoom = (
     
     if (data) {
       const lastActivity = data.lastActivity || data.createdAt;
-      
-      // Solo controlla l'inattività se è passato abbastanza tempo dall'ultima verifica
-      // e se non ci sono giocatori attivi nella stanza
       const hasActivePlayers = data.players && Object.keys(data.players).length > 0;
       
       if (!hasActivePlayers && isRoomInactive(lastActivity)) {
-        console.log(`Room ${roomCode} is inactive and has no active players. Last activity: ${new Date(lastActivity).toISOString()}`);
-        console.log(`Deleting inactive room ${roomCode}`);
         deleteRoom(roomCode).then(() => {
-          console.log(`Room ${roomCode} deleted successfully`);
-          callback(null); // This will trigger the navigation in the RoomContext
+          callback(null);
         }).catch(err => {
           console.error(`Error deleting room ${roomCode}:`, err);
         });
       } else {
-        // Se ci sono giocatori attivi, aggiorna l'attività automaticamente
-        if (hasActivePlayers) {
-          updateRoomActivity(roomCode).catch(err => {
-            console.error(`Error updating room activity for ${roomCode}:`, err);
-          });
-        }
         callback(data);
       }
     } else {
-      console.log(`Room ${roomCode} data not found or was deleted`);
       callback(null);
     }
   }, (error) => {
@@ -252,7 +233,6 @@ export const listenToRoom = (
   });
   
   return () => {
-    console.log(`Cleaning up listener for room ${roomCode}`);
     off(roomRef);
   };
 };

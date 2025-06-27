@@ -246,23 +246,17 @@ function RoomProvider({ children }: { children: ReactNode }) {
     let unsubscribe: (() => void) | null = null;
     
     if (roomCode) {
-      console.log(`Setting up room listener for room ${roomCode}`);
       unsubscribe = listenToRoom(roomCode, (data) => {
         if (data) {
           setRoomData(data);
           
           if (playerId && data.players && !data.players[playerId]) {
-            console.log(`Player ${playerId} not found in room data, may have been removed`);
             toast.error('Sei stato rimosso dalla stanza');
             setRoomCode(null);
             setRoomData(null);
             navigate('/');
-          } else if (playerId && data.players && data.players[playerId]) {
-            console.log(`Player data in room: ${JSON.stringify(data.players[playerId])}`);
-            console.log(`Current points: ${data.players[playerId].points || 0}`);
           }
         } else {
-          console.log("Room no longer exists");
           setError("La stanza non esiste più o è stata chiusa per inattività");
           setRoomCode(null);
           setRoomData(null);
@@ -273,7 +267,6 @@ function RoomProvider({ children }: { children: ReactNode }) {
     
     return () => {
       if (unsubscribe) {
-        console.log(`Cleaning up room listener for room ${roomCode}`);
         unsubscribe();
       }
     };
@@ -282,20 +275,25 @@ function RoomProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!roomCode || !playerId) return;
     
+    // Aggiornamento iniziale solo una volta
     updateRoomActivity(roomCode).catch(err => {
       console.error("Error updating initial room activity:", err);
     });
     
-    const interval = setInterval(() => {
-      if (roomCode) {
-        updateRoomActivity(roomCode).catch(err => {
-          console.error("Error updating room activity:", err);
-        });
-      }
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, [roomCode, playerId]);
+    // Ridotto intervallo da 30 secondi a 2 minuti per ridurre carico database
+    // Solo per l'host per evitare multiple scritture simultanee
+    if (isHost) {
+      const interval = setInterval(() => {
+        if (roomCode) {
+          updateRoomActivity(roomCode).catch(err => {
+            console.error("Error updating room activity:", err);
+          });
+        }
+      }, 120000); // 2 minuti invece di 30 secondi
+      
+      return () => clearInterval(interval);
+    }
+  }, [roomCode, playerId, isHost]);
 
   useEffect(() => {
     if (roomCode && isHost) {
