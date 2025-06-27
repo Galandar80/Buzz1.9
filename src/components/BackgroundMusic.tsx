@@ -239,7 +239,10 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       
       if (audioRef.current) {
         audioRef.current.pause();
-        URL.revokeObjectURL(audioRef.current.src);
+        // Pulisci URL object quando carichi nuovi file
+        if (audioRef.current.src && audioRef.current.src.startsWith('blob:')) {
+          URL.revokeObjectURL(audioRef.current.src);
+        }
         audioRef.current = null;
       }
       
@@ -262,7 +265,10 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     
     if (audioRef.current) {
       audioRef.current.pause();
-      URL.revokeObjectURL(audioRef.current.src);
+      // Pulisci URL object quando cambi traccia
+      if (audioRef.current.src && audioRef.current.src.startsWith('blob:')) {
+        URL.revokeObjectURL(audioRef.current.src);
+      }
       audioRef.current = null;
     }
   };

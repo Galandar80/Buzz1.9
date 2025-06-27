@@ -837,7 +837,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
     }
   }, [roomData?.gameMode, roomData?.gameTimer]);
 
-  const enableBuzz = async () => {
+  const enableBuzz = useCallback(async () => {
     if (!roomCode || !isHost) return;
     
     try {
@@ -850,9 +850,9 @@ function RoomProvider({ children }: { children: ReactNode }) {
       console.error('Errore nell\'attivare il buzz:', err);
       toast.error('Errore nell\'attivare il buzz');
     }
-  };
+  }, [roomCode, isHost]);
 
-  const disableBuzz = async () => {
+  const disableBuzz = useCallback(async () => {
     if (!roomCode || !isHost) return;
     
     try {
@@ -865,7 +865,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
       console.error('Errore nel disattivare il buzz:', err);
       toast.error('Errore nel disattivare il buzz');
     }
-  };
+  }, [roomCode, isHost]);
 
   const value = {
     roomCode,
