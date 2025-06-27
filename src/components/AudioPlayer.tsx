@@ -104,14 +104,13 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
         console.log('🎵 Countdown ricevuto da Firebase:', countdownData);
         setIsCountdownActive(countdownData.isActive || false);
         setCountdownValue(countdownData.value || 0);
-        setCountdownSongName(countdownData.songName || '');
+        setCountdownSongName(''); // Non mostriamo mai il nome della canzone
         
         // Se il countdown è attivo, mostralo a tutti
         if (countdownData.isActive) {
           console.log('🎵 Countdown attivo per tutti i dispositivi:', {
             isActive: countdownData.isActive,
-            value: countdownData.value,
-            songName: countdownData.songName
+            value: countdownData.value
           });
         }
       } else {
@@ -271,11 +270,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       // Disabilita il buzz durante il countdown
       window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
       
-      // Salva lo stato iniziale del countdown in Firebase
+      // Salva lo stato iniziale del countdown in Firebase (senza nome canzone)
       await update(ref(database, `rooms/${roomCode}/countdown`), {
         isActive: true,
         value: 3,
-        songName: audioData.file.name,
         startTime: Date.now()
       });
 
@@ -286,8 +284,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
         console.log(`🎵 Countdown: ${i}`);
         await update(ref(database, `rooms/${roomCode}/countdown`), {
           value: i,
-          isActive: true,
-          songName: audioData.file.name
+          isActive: true
         });
         
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -297,8 +294,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       console.log('🎵 Countdown terminato - avvio musica');
       await update(ref(database, `rooms/${roomCode}/countdown`), {
         isActive: false,
-        value: 0,
-        songName: ''
+        value: 0
       });
 
       // L'evento mainPlayerPlay sarà inviato automaticamente quando l'audio inizia effettivamente
@@ -311,8 +307,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
       // In caso di errore, pulisci lo stato
       await update(ref(database, `rooms/${roomCode}/countdown`), {
         isActive: false,
-        value: 0,
-        songName: ''
+        value: 0
       });
       setPendingAudioData(null);
     }

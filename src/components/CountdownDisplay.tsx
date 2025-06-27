@@ -13,11 +13,6 @@ const CountdownDisplay: React.FC = () => {
           <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">
             🎵 Partenza tra...
           </h2>
-          {countdownState.songName && (
-            <p className="text-lg text-white/80">
-              "{countdownState.songName}"
-            </p>
-          )}
         </div>
         
         <div className="relative">

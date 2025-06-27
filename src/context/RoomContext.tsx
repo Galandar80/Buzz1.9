@@ -879,7 +879,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
         setCountdownState({
           isActive: countdownData.isActive || false,
           value: countdownData.value || 0,
-          songName: countdownData.songName || '',
+          songName: '', // Non mostriamo mai il nome della canzone
           startTime: countdownData.startTime
         });
       } else {
@@ -907,11 +907,10 @@ function RoomProvider({ children }: { children: ReactNode }) {
       // Disabilita buzz durante countdown
       window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
       
-      // Salva countdown iniziale in Firebase
+      // Salva countdown iniziale in Firebase (senza nome canzone)
       const countdownData = {
         isActive: true,
         value: 3,
-        songName,
         startTime: Date.now()
       };
       
@@ -923,7 +922,6 @@ function RoomProvider({ children }: { children: ReactNode }) {
         await update(dbRef(database, `rooms/${roomCode}/countdown`), {
           isActive: true,
           value: i,
-          songName,
           startTime: Date.now()
         });
         
@@ -934,8 +932,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
       console.log('🎵 Countdown terminato');
       await update(dbRef(database, `rooms/${roomCode}/countdown`), {
         isActive: false,
-        value: 0,
-        songName: ''
+        value: 0
       });
       
       // Abilita buzz dopo countdown
@@ -946,8 +943,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
       // Cleanup in caso di errore
       await update(dbRef(database, `rooms/${roomCode}/countdown`), {
         isActive: false,
-        value: 0,
-        songName: ''
+        value: 0
       });
     }
   }, [roomCode, isHost]);
@@ -963,7 +959,6 @@ function RoomProvider({ children }: { children: ReactNode }) {
       await update(dbRef(database, `rooms/${roomCode}/countdown`), {
         isActive: false,
         value: 0,
-        songName: '',
         startTime: null
       });
 
@@ -979,7 +974,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
 
     try {
       console.log('🧪 Testing countdown...');
-      await startCountdown('Test Canzone - Countdown');
+      await startCountdown('Test Countdown'); // Il nome non verrà mostrato
       toast.success('Test countdown avviato!');
     } catch (error) {
       console.error('❌ Error testing countdown:', error);
