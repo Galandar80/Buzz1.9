@@ -66,7 +66,7 @@ const CountdownOverlay: React.FC<{ count: number; songName: string; isVisible: b
 };
 
 const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
-  const { isHost, roomData, roomCode } = useRoom();
+  const { isHost, roomData, roomCode, testCountdown, stopCountdown } = useRoom();
   const [leftFiles, setLeftFiles] = useState<File[]>([]);
   const [rightFiles, setRightFiles] = useState<File[]>([]);
   const [masterVolume, setMasterVolume] = useState(1);
@@ -577,6 +577,16 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     }
   }, [currentAudio, roomCode, stopAudioPlayback]);
 
+  const handleTestCountdown = useCallback(() => {
+    if (!isHost || !roomCode) return;
+    testCountdown();
+  }, [isHost, roomCode, testCountdown]);
+
+  const handleStopCountdown = useCallback(() => {
+    if (!isHost || !roomCode) return;
+    stopCountdown();
+  }, [isHost, roomCode, stopCountdown]);
+
   return (
     <>
       {/* Countdown Overlay - Visibile su tutti i display */}
@@ -599,6 +609,24 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
             >
               <RotateCcw className="w-5 h-5" />
               Reset Player Audio
+            </button>
+          </div>
+
+          {/* Bottoni di test e controllo */}
+          <div className="flex flex-wrap gap-4 mb-6">
+            <button
+              onClick={handleTestCountdown}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors border border-blue-500/30"
+              title="Testa il countdown sincronizzato"
+            >
+              🧪 Test Countdown
+            </button>
+            <button
+              onClick={handleStopCountdown}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors border border-orange-500/30"
+              title="Ferma il countdown attivo"
+            >
+              🛑 Stop Countdown
             </button>
           </div>
 

@@ -20,6 +20,7 @@ import { Leaderboard } from '../components/Leaderboard';
 import { PlayerStats } from '../components/PlayerStats';
 import HotkeysManager from '../components/HotkeysManager';
 import HotkeysGuide from '../components/HotkeysGuide';
+import CountdownDisplay from '../components/CountdownDisplay';
 
 const Room = () => {
   const { code } = useParams<{ code: string }>();
@@ -82,6 +83,9 @@ const Room = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex flex-col">
       <Header />
+      
+      {/* Countdown sincronizzato - Visibile su tutti i dispositivi */}
+      <CountdownDisplay />
       
       {/* Componente per visualizzare le risposte in modo prominente */}
       <PlayerAnswer />

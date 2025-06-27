@@ -270,15 +270,15 @@
   }
 }
 
-/* Animazioni per il countdown */
+/* Animazioni personalizzate per il countdown */
 @keyframes scale-in {
   0% {
-    transform: scale(0.5);
     opacity: 0;
+    transform: scale(0.5);
   }
   100% {
-    transform: scale(1);
     opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -287,7 +287,7 @@
     transform: scale(1);
   }
   50% {
-    transform: scale(1.1);
+    transform: scale(1.05);
   }
 }
 

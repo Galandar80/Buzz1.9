@@ -18,6 +18,7 @@ import {
   update,
   updateBuzzActivity,
 } from '../services/firebase';
+import { ref as dbRef, onValue } from 'firebase/database';
 import { AudioStreamManager } from '../services/webrtc';
 
 interface Player {
@@ -61,6 +62,14 @@ export interface GameTimer {
   isActive: boolean;
   timeLeft: number;
   totalTime: number;
+}
+
+// Aggiungo interface per il countdown sincronizzato
+export interface CountdownState {
+  isActive: boolean;
+  value: number;
+  songName: string;
+  startTime?: number;
 }
 
 interface RoomData {
@@ -112,6 +121,11 @@ interface RoomContextType {
   enableBuzz: () => Promise<void>;
   disableBuzz: () => Promise<void>;
   isBuzzEnabled: boolean;
+  // Aggiungo funzioni per il countdown sincronizzato
+  countdownState: CountdownState;
+  startCountdown: (songName: string) => Promise<void>;
+  stopCountdown: () => Promise<void>;
+  testCountdown: () => Promise<void>;
 }
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
@@ -155,6 +169,13 @@ function RoomProvider({ children }: { children: ReactNode }) {
   const [audioStreamManager, setAudioStreamManager] = useState<AudioStreamManager | null>(null);
   const [currentGameMode, setCurrentGameMode] = useState<GameMode | null>(null);
   const [gameTimer, setGameTimer] = useState<GameTimer | null>(null);
+  
+  // Aggiungo stato per il countdown sincronizzato
+  const [countdownState, setCountdownState] = useState<CountdownState>({
+    isActive: false,
+    value: 0,
+    songName: '',
+  });
   
   const navigate = useNavigate();
 
@@ -856,12 +877,133 @@ function RoomProvider({ children }: { children: ReactNode }) {
     }
   }, [roomCode, isHost]);
 
-  const value = {
-    roomCode,
+  // Listener per il countdown sincronizzato via Firebase
+  useEffect(() => {
+    if (!roomCode) return;
+
+    const countdownRef = dbRef(database, `rooms/${roomCode}/countdown`);
+    const unsubscribe = onValue(countdownRef, (snapshot) => {
+      const countdownData = snapshot.val();
+      console.log('🎵 RoomContext: Countdown ricevuto da Firebase:', countdownData);
+      
+      if (countdownData) {
+        setCountdownState({
+          isActive: countdownData.isActive || false,
+          value: countdownData.value || 0,
+          songName: countdownData.songName || '',
+          startTime: countdownData.startTime
+        });
+      } else {
+        setCountdownState({
+          isActive: false,
+          value: 0,
+          songName: '',
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [roomCode]);
+
+  // Funzione per avviare il countdown (solo host)
+  const startCountdown = useCallback(async (songName: string) => {
+    if (!roomCode || !isHost) {
+      console.warn('🚫 Tentativo di avviare countdown senza essere host o senza roomCode');
+      return;
+    }
+
+    console.log('🎵 RoomContext: Avvio countdown per:', songName);
+    
+    try {
+      // Disabilita buzz durante countdown
+      window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
+      
+      // Salva countdown iniziale in Firebase
+      const countdownData = {
+        isActive: true,
+        value: 3,
+        songName,
+        startTime: Date.now()
+      };
+      
+      await update(dbRef(database, `rooms/${roomCode}/countdown`), countdownData);
+      
+      // Countdown da 3 a 0
+      for (let i = 3; i > 0; i--) {
+        console.log(`🎵 Countdown: ${i}`);
+        await update(dbRef(database, `rooms/${roomCode}/countdown`), {
+          isActive: true,
+          value: i,
+          songName,
+          startTime: Date.now()
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      // Fine countdown
+      console.log('🎵 Countdown terminato');
+      await update(dbRef(database, `rooms/${roomCode}/countdown`), {
+        isActive: false,
+        value: 0,
+        songName: ''
+      });
+      
+      // Abilita buzz dopo countdown
+      window.dispatchEvent(new CustomEvent('enableBuzzForSong'));
+      
+    } catch (error) {
+      console.error('Errore durante countdown:', error);
+      // Cleanup in caso di errore
+      await update(dbRef(database, `rooms/${roomCode}/countdown`), {
+        isActive: false,
+        value: 0,
+        songName: ''
+      });
+    }
+  }, [roomCode, isHost]);
+
+  // Funzione per fermare il countdown
+  const stopCountdown = useCallback(async () => {
+    if (!roomCode || !isHost) return;
+
+    try {
+      console.log('🛑 Stopping countdown...');
+      
+      // Fermla il countdown nel database
+      await update(dbRef(database, `rooms/${roomCode}/countdown`), {
+        isActive: false,
+        value: 0,
+        songName: '',
+        startTime: null
+      });
+
+      console.log('✅ Countdown stopped successfully');
+    } catch (error) {
+      console.error('❌ Error stopping countdown:', error);
+    }
+  }, [roomCode, isHost]);
+
+  // Funzione per testare il countdown
+  const testCountdown = useCallback(async () => {
+    if (!roomCode || !isHost) return;
+
+    try {
+      console.log('🧪 Testing countdown...');
+      await startCountdown('Test Canzone - Countdown');
+      toast.success('Test countdown avviato!');
+    } catch (error) {
+      console.error('❌ Error testing countdown:', error);
+      toast.error('Errore nel test del countdown');
+    }
+  }, [roomCode, isHost, startCountdown]);
+
+  const contextValue: RoomContextType = {
+    roomCode: roomCode || '',
     setRoomCode,
-    playerName,
+    playerName: playerName || '',
     setPlayerName,
-    playerId,
+    playerId: playerId || '',
     setPlayerId,
     roomData,
     isHost,
@@ -893,9 +1035,14 @@ function RoomProvider({ children }: { children: ReactNode }) {
     enableBuzz,
     disableBuzz,
     isBuzzEnabled: !!roomData?.buzzEnabled,
+    // Countdown sincronizzato
+    countdownState,
+    startCountdown,
+    stopCountdown,
+    testCountdown,
   };
 
-  return <RoomContext.Provider value={value}>{children}</RoomContext.Provider>;
+  return <RoomContext.Provider value={contextValue}>{children}</RoomContext.Provider>;
 }
 
 export { RoomProvider };
