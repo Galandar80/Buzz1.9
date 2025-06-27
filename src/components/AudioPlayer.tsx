@@ -416,36 +416,6 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ onAudioPause }) => {
     };
   }, []);
 
-  // 🔥 LISTENER FIREBASE PER COUNTDOWN - Sincronizza su tutti i dispositivi
-  useEffect(() => {
-    if (!roomCode) return;
-
-    const countdownRef = ref(database, `rooms/${roomCode}/countdown`);
-    
-    const unsubscribe = onValue(countdownRef, (snapshot) => {
-      const countdownData = snapshot.val();
-      
-      if (countdownData) {
-        console.log('📱 Countdown ricevuto da Firebase:', countdownData);
-        
-        // Aggiorna lo stato del countdown per tutti i dispositivi
-        setIsCountdownActive(countdownData.isActive || false);
-        setCountdownValue(countdownData.value || 0);
-        setCountdownSongName(countdownData.songName || '');
-        
-        // Se il countdown è attivo e non siamo l'host, gestiamo gli eventi buzz
-        if (countdownData.isActive) {
-          window.dispatchEvent(new CustomEvent('disableBuzzForSong'));
-        } else if (countdownData.value === 0 && !countdownData.isActive) {
-          // Il countdown è finito, abilita il buzz
-          window.dispatchEvent(new CustomEvent('enableBuzzForSong'));
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [roomCode]);
-
   const handleFileSelect = (column: 'left' | 'right') => {
     const input = document.createElement('input');
     input.type = 'file';
