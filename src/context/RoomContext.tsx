@@ -116,8 +116,6 @@ interface RoomContextType {
   stopGameTimer: () => Promise<void>;
   currentGameMode: GameMode | null;
   gameTimer: GameTimer | null;
-  updatePlayerScore: (playerId: string, isCorrect: boolean, responseTime?: number) => Promise<void>;
-  calculateScore: (responseTime: number, isCorrect: boolean, streak?: number) => number;
   enableBuzz: () => Promise<void>;
   disableBuzz: () => Promise<void>;
   isBuzzEnabled: boolean;
@@ -566,10 +564,7 @@ function RoomProvider({ children }: { children: ReactNode }) {
         ? (gameTimer?.totalTime || 30) - winnerInfo.timeLeft 
         : 3; // Default 3 secondi se non c'è timer
       
-      // Usa il nuovo sistema di punteggio avanzato
-      await updatePlayerScore(winnerInfo.playerId, true, responseTime);
-      
-      // Mantieni anche il sistema legacy per compatibilità
+      // Usa solo il sistema di punteggio legacy per compatibilità
       await assignPoints(roomCode, winnerInfo.playerId, amount);
       
       // Disabilita il buzz dopo aver dato la risposta
@@ -586,14 +581,8 @@ function RoomProvider({ children }: { children: ReactNode }) {
     
     try {
       const winnerInfo = roomData.winnerInfo;
-      const responseTime = winnerInfo.timeLeft 
-        ? (gameTimer?.totalTime || 30) - winnerInfo.timeLeft 
-        : 3; // Default 3 secondi se non c'è timer
       
-      // Usa il nuovo sistema di punteggio per risposta sbagliata
-      await updatePlayerScore(winnerInfo.playerId, false, responseTime);
-      
-      // Mantieni anche il sistema legacy per compatibilità
+      // Usa solo il sistema di punteggio legacy per compatibilità
       await subtractPoints(roomCode, winnerInfo.playerId, amount);
       
       // Disabilita il buzz dopo aver dato la risposta
@@ -1030,8 +1019,6 @@ function RoomProvider({ children }: { children: ReactNode }) {
     stopGameTimer,
     currentGameMode,
     gameTimer,
-    updatePlayerScore,
-    calculateScore,
     enableBuzz,
     disableBuzz,
     isBuzzEnabled: !!roomData?.buzzEnabled,
